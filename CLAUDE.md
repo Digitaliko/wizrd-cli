@@ -6,56 +6,84 @@ Global CLI tools for the Digitaliko wizrd ecosystem. Bun + TypeScript.
 
 This is a standalone global CLI — not a submodule of digitaliko-wizrd. It gets installed at `~/.wizrd-cli` and symlinked to PATH.
 
-## Packages
+## Architecture — 5 Packages
 
-### `packages/superset/` — Superset Integration
-Handles setup/run/teardown lifecycle for any wizrd repo (L0/L1/L2) running inside Superset workspaces.
+```
+wizrd                    → packages/agent/     Spawns claude with wizrd OS system prompt
+wizrd cmd <command>      → packages/cmd/       Fast CLI commands (no AI)
+wizrd menu               → packages/menu/      Interactive menu picker
+wizrd config <command>   → packages/config/    Config generation (sync, show, doctor)
+wizrd superset <command> → packages/superset/  Workspace lifecycle (setup, run, teardown)
+```
 
-**Commands:**
-- `wizrd-superset setup` — Init submodules, copy .env, allocate ports, install deps
-- `wizrd-superset run` — Start dev servers + Docker with allocated ports
-- `wizrd-superset teardown` — Kill processes, release ports, Docker down
-- `wizrd-superset ports` — Show global port allocation table
-- `wizrd-superset init-repo` — Scaffold .superset/ config in current repo
-- `wizrd-superset doctor` — Validate config health
+All packages share `@wizrd-cli/shared` for level detection, operator mapping, colors, and path utilities.
 
-**Key concepts:**
-- Auto-detects wizrd level by reading CLAUDE.md `## Wizrd Level:` line
-- Global port registry at `~/.wizrd-cli/state/port-registry.json`
-- Port offsets in increments of 100 (0, 100, 200...) prevent collisions
-- Every repo gets the same 3-line `.superset/config.json` pointing to `wizrd-superset`
+### `packages/agent/` — wizrd (main entry point)
 
-### `packages/config/` — Unified Config Generator
-Generates `.claude/settings.json` and `.mcp.json` from wizrd level + local overrides.
+Spawns `claude` CLI with the wizrd OS system prompt injected via `--append-system-prompt`. Detects operator (whoami), level (CLAUDE.md), and assembles the prompt from templates.
 
-**Commands:**
-- `wizrd-config sync` — Generate settings + MCPs from level detection + local overrides
-- `wizrd-config show` — Dry run (print what would be generated)
-- `wizrd-config doctor` — Check for stale/conflicting config
+**Templates** (in `packages/agent/templates/`):
+- `core.md` — Always injected. Navigation rules, workflow, guardrails, brand voice.
+- `l0.md` / `l1.md` / `l2.md` — Level-specific rules. Injected based on detected level.
+- `operator-{name}.md` — Operator-specific tone, access, behavior. Injected based on whoami.
 
-**How it works:**
-1. Reads CLAUDE.md → detects L0/L1/L2
-2. Loads base template for that level (permissions, hooks, MCPs)
-3. Merges with local overrides (`.claude/settings.local.json`, `.mcp.local.json`)
-4. Writes `.claude/settings.json` + `.mcp.json`
+**Flags:**
+- `wizrd` — Interactive claude session with wizrd OS
+- `wizrd "prompt"` — Non-interactive (`claude -p`)
+- `wizrd --dry-run` — Show assembled command without executing
+- `wizrd --verbose` — Show context before launching
+- `wizrd --model <model>` — Override model
 
-**Merge rules:**
-- Permissions: union (base + local). Local can promote ask → allow.
-- MCPs: deep merge. Local servers added alongside base. Local wins on conflict.
-- Hooks: base always included, local appended.
+### `packages/cmd/` — wizrd cmd (fast commands)
+
+Pure filesystem + git reads. No AI involved. Instant results.
+
+- `wizrd cmd whoami` — Current operator + role + permissions
+- `wizrd cmd level` — Detect L0/L1/L2 + context
+- `wizrd cmd context` — Full: operator + level + worktrees
+- `wizrd cmd clients [name]` — List all or show single client
+- `wizrd cmd services` — L2 services in current L1
+- `wizrd cmd cd <client> [service]` — Print path (use: `cd $(wizrd cmd cd kiaba ispediter)`)
+- `wizrd cmd status` — System status dashboard
+- `wizrd cmd worktrees` — Active worktrees across levels
+- `wizrd cmd dirty` — Submodules with uncommitted changes
+- `wizrd cmd branches` — Active branches across submodules
+- `wizrd cmd log [client]` — Recent worklog entries
+- `wizrd cmd ports` — Port allocations (delegates to wizrd-superset)
+- `wizrd cmd doctor` — System health check (runs all package doctors)
+
+### `packages/menu/` — wizrd menu (interactive picker)
+
+Numbered menu with common actions. Delegates to other commands.
+
+### `packages/shared/` — @wizrd-cli/shared
+
+Shared utilities used by all packages:
+- `detect-level.ts` — Read CLAUDE.md for `## Wizrd Level: L0/L1/L2`
+- `operator.ts` — Map `whoami` to operator role, permissions, tone
+- `colors.ts` — ANSI color constants
+- `paths.ts` — Resolve L0 root, client paths, service paths
+
+### `packages/superset/` — wizrd-superset
+
+Workspace lifecycle for Superset workspaces. See HOW-TO.md in digitaliko-wizrd.
+
+### `packages/config/` — wizrd-config
+
+Config generation. Reads level → loads template → merges local overrides → writes settings.json + .mcp.json.
 
 ## Development
 
 ```bash
 bun install
-bun run packages/superset/src/index.ts setup    # test locally
-bun test                                         # run tests
-bun build                                        # compile
+bun run packages/agent/src/index.ts --help    # test agent
+bun run packages/cmd/src/index.ts whoami      # test cmd
+./install.sh                                   # re-symlink binaries
 ```
 
-## Architecture
+## Architecture Decisions
 
-- Pure Bun + TypeScript, no external CLI framework
-- `Bun.$` for shell commands
-- JSON file for port registry state
-- Zero dependencies beyond bun-types
+- **Pure Bun + TypeScript** — no external CLI framework, zero dependencies beyond bun-types
+- **Templates, not hardcoded prompts** — system prompt assembled from .md files, easy to edit
+- **Shared lib** — `@wizrd-cli/shared` prevents duplication across packages
+- **Level detection is the key** — everything (agent, cmd, config, superset) reads `## Wizrd Level` from CLAUDE.md
