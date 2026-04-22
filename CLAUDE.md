@@ -25,6 +25,25 @@ Handles setup/run/teardown lifecycle for any wizrd repo (L0/L1/L2) running insid
 - Port offsets in increments of 100 (0, 100, 200...) prevent collisions
 - Every repo gets the same 3-line `.superset/config.json` pointing to `wizrd-superset`
 
+### `packages/config/` — Unified Config Generator
+Generates `.claude/settings.json` and `.mcp.json` from wizrd level + local overrides.
+
+**Commands:**
+- `wizrd-config sync` — Generate settings + MCPs from level detection + local overrides
+- `wizrd-config show` — Dry run (print what would be generated)
+- `wizrd-config doctor` — Check for stale/conflicting config
+
+**How it works:**
+1. Reads CLAUDE.md → detects L0/L1/L2
+2. Loads base template for that level (permissions, hooks, MCPs)
+3. Merges with local overrides (`.claude/settings.local.json`, `.mcp.local.json`)
+4. Writes `.claude/settings.json` + `.mcp.json`
+
+**Merge rules:**
+- Permissions: union (base + local). Local can promote ask → allow.
+- MCPs: deep merge. Local servers added alongside base. Local wins on conflict.
+- Hooks: base always included, local appended.
+
 ## Development
 
 ```bash
