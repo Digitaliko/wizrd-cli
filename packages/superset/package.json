@@ -1,0 +1,13 @@
+{
+  "name": "@wizrd-cli/superset",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "wizrd-superset": "src/index.ts"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "bun-types": "latest"
+  }
+}

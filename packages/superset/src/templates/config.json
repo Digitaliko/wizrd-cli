@@ -1,0 +1,5 @@
+{
+  "setup": ["wizrd-superset setup"],
+  "run": ["wizrd-superset run"],
+  "teardown": ["wizrd-superset teardown"]
+}

@@ -1,0 +1,10 @@
+{
+  "name": "wizrd-cli",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": ["packages/*"],
+  "scripts": {
+    "build": "bun build packages/superset/src/index.ts --outdir dist/superset --target bun",
+    "test": "bun test"
+  }
+}

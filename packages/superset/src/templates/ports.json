@@ -1,0 +1,5 @@
+{
+  "services": [
+    { "name": "web", "default_port": 3000, "env_var": "PORT" }
+  ]
+}
