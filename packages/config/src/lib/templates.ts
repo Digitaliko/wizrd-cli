@@ -4,7 +4,7 @@
  */
 
 import { join, dirname } from "path";
-import type { WizrdLevel } from "@wizrd-cli/superset/lib/detect-level.ts";
+import type { WizrdLevel } from "@wizrd-cli/shared";
 
 const TEMPLATES_DIR = join(dirname(new URL(import.meta.url).pathname), "..", "templates");
 

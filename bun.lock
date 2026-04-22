@@ -5,6 +5,32 @@
     "": {
       "name": "wizrd-cli",
     },
+    "packages/agent": {
+      "name": "@wizrd-cli/agent",
+      "version": "0.1.0",
+      "bin": {
+        "wizrd": "src/index.ts",
+      },
+      "dependencies": {
+        "@wizrd-cli/shared": "workspace:*",
+      },
+      "devDependencies": {
+        "bun-types": "latest",
+      },
+    },
+    "packages/cmd": {
+      "name": "@wizrd-cli/cmd",
+      "version": "0.1.0",
+      "bin": {
+        "wizrd-cmd": "src/index.ts",
+      },
+      "dependencies": {
+        "@wizrd-cli/shared": "workspace:*",
+      },
+      "devDependencies": {
+        "bun-types": "latest",
+      },
+    },
     "packages/config": {
       "name": "@wizrd-cli/config",
       "version": "0.1.0",
@@ -12,8 +38,28 @@
         "wizrd-config": "src/index.ts",
       },
       "dependencies": {
-        "@wizrd-cli/superset": "workspace:*",
+        "@wizrd-cli/shared": "workspace:*",
       },
+      "devDependencies": {
+        "bun-types": "latest",
+      },
+    },
+    "packages/menu": {
+      "name": "@wizrd-cli/menu",
+      "version": "0.1.0",
+      "bin": {
+        "wizrd-menu": "src/index.ts",
+      },
+      "dependencies": {
+        "@wizrd-cli/shared": "workspace:*",
+      },
+      "devDependencies": {
+        "bun-types": "latest",
+      },
+    },
+    "packages/shared": {
+      "name": "@wizrd-cli/shared",
+      "version": "0.1.0",
       "devDependencies": {
         "bun-types": "latest",
       },
@@ -23,6 +69,9 @@
       "version": "0.1.0",
       "bin": {
         "wizrd-superset": "src/index.ts",
+      },
+      "dependencies": {
+        "@wizrd-cli/shared": "workspace:*",
       },
       "devDependencies": {
         "bun-types": "latest",
@@ -42,7 +91,15 @@
   "packages": {
     "@types/node": ["@types/node@25.6.0", "", { "dependencies": { "undici-types": "~7.19.0" } }, "sha512-+qIYRKdNYJwY3vRCZMdJbPLJAtGjQBudzZzdzwQYkEPQd+PJGixUL5QfvCLDaULoLv+RhT3LDkwEfKaAkgSmNQ=="],
 
+    "@wizrd-cli/agent": ["@wizrd-cli/agent@workspace:packages/agent"],
+
+    "@wizrd-cli/cmd": ["@wizrd-cli/cmd@workspace:packages/cmd"],
+
     "@wizrd-cli/config": ["@wizrd-cli/config@workspace:packages/config"],
+
+    "@wizrd-cli/menu": ["@wizrd-cli/menu@workspace:packages/menu"],
+
+    "@wizrd-cli/shared": ["@wizrd-cli/shared@workspace:packages/shared"],
 
     "@wizrd-cli/superset": ["@wizrd-cli/superset@workspace:packages/superset"],
 

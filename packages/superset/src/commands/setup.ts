@@ -7,7 +7,7 @@
  * - L2: Install deps, copy .env, allocate port
  */
 
-import { detectLevel, hasSubmodules } from "../lib/detect-level.ts";
+import { detectLevel, hasSubmodules } from "@wizrd-cli/shared";
 import { initSubmodules } from "../lib/submodules.ts";
 import { copyEnvFiles, applyPortOffset, writeEnvSuperset } from "../lib/env.ts";
 import { installDeps, installAllServiceDeps } from "../lib/deps.ts";

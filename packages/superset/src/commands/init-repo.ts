@@ -10,7 +10,7 @@
 
 import { existsSync, mkdirSync } from "fs";
 import { join, basename } from "path";
-import { detectLevel } from "../lib/detect-level.ts";
+import { detectLevel } from "@wizrd-cli/shared";
 
 export async function initRepo(): Promise<void> {
   const dir = process.cwd();

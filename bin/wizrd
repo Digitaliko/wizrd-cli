@@ -1,2 +1,2 @@
 #!/usr/bin/env bun
-import "../packages/wizrd/src/index.ts";
+import "../packages/agent/src/index.ts";

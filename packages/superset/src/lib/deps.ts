@@ -5,7 +5,7 @@
 import { existsSync } from "fs";
 import { join, basename } from "path";
 import { Glob } from "bun";
-import { detectPackageManager, type PackageManager } from "./detect-level.ts";
+import { detectPackageManager, type PackageManager } from "@wizrd-cli/shared";
 
 const INSTALL_COMMANDS: Record<Exclude<PackageManager, null>, string[]> = {
   bun: ["bun", "install"],

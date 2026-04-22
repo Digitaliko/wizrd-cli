@@ -6,7 +6,7 @@
 
 import { existsSync, readdirSync, unlinkSync } from "fs";
 import { join, basename } from "path";
-import { detectLevel, hasDocker } from "../lib/detect-level.ts";
+import { detectLevel, hasDocker } from "@wizrd-cli/shared";
 import { dockerDown, dockerDownAll } from "../lib/docker.ts";
 import { release } from "../lib/port-registry.ts";
 

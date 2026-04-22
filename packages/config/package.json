@@ -7,7 +7,7 @@
     "wizrd-config": "src/index.ts"
   },
   "dependencies": {
-    "@wizrd-cli/superset": "workspace:*"
+    "@wizrd-cli/shared": "workspace:*"
   },
   "devDependencies": {
     "bun-types": "latest"

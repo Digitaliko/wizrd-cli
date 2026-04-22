@@ -1,0 +1,2 @@
+#!/usr/bin/env bun
+import "../packages/cmd/src/index.ts";

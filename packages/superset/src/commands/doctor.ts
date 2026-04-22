@@ -6,7 +6,7 @@
 
 import { existsSync } from "fs";
 import { join } from "path";
-import { detectLevel, hasSubmodules } from "../lib/detect-level.ts";
+import { detectLevel, hasSubmodules } from "@wizrd-cli/shared";
 
 interface Check {
   name: string;

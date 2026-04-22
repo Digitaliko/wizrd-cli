@@ -2,7 +2,7 @@
  * wizrd-config show — Dry run: show what configs would be generated.
  */
 
-import { detectLevel } from "@wizrd-cli/superset/lib/detect-level.ts";
+import { detectLevel } from "@wizrd-cli/shared";
 import { loadSettingsTemplate, loadMcpTemplate, loadHooksTemplate } from "../lib/templates.ts";
 import { mergeConfig } from "../lib/merge.ts";
 

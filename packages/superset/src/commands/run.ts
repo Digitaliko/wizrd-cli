@@ -9,7 +9,7 @@
 
 import { existsSync, mkdirSync } from "fs";
 import { join, basename } from "path";
-import { detectLevel, detectPackageManager, hasDocker } from "../lib/detect-level.ts";
+import { detectLevel, detectPackageManager, hasDocker } from "@wizrd-cli/shared";
 import { dockerUp, dockerUpAll } from "../lib/docker.ts";
 import { loadPortsConfig } from "../lib/ports-config.ts";
 import { loadRegistry } from "../lib/port-registry.ts";
