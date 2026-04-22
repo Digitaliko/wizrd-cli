@@ -5,7 +5,7 @@
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-BIN_DIR="/usr/local/bin"
+BIN_DIR="${WIZRD_BIN_DIR:-$HOME/.local/bin}"
 STATE_DIR="$SCRIPT_DIR/state"
 
 echo "=== wizrd-cli installer ==="
