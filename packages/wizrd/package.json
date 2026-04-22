@@ -1,0 +1,12 @@
+{
+  "name": "@wizrd-cli/wizrd",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "wizrd": "src/index.ts"
+  },
+  "devDependencies": {
+    "bun-types": "latest"
+  }
+}

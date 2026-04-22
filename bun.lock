@@ -28,6 +28,16 @@
         "bun-types": "latest",
       },
     },
+    "packages/wizrd": {
+      "name": "@wizrd-cli/wizrd",
+      "version": "0.1.0",
+      "bin": {
+        "wizrd": "src/index.ts",
+      },
+      "devDependencies": {
+        "bun-types": "latest",
+      },
+    },
   },
   "packages": {
     "@types/node": ["@types/node@25.6.0", "", { "dependencies": { "undici-types": "~7.19.0" } }, "sha512-+qIYRKdNYJwY3vRCZMdJbPLJAtGjQBudzZzdzwQYkEPQd+PJGixUL5QfvCLDaULoLv+RhT3LDkwEfKaAkgSmNQ=="],
@@ -35,6 +45,8 @@
     "@wizrd-cli/config": ["@wizrd-cli/config@workspace:packages/config"],
 
     "@wizrd-cli/superset": ["@wizrd-cli/superset@workspace:packages/superset"],
+
+    "@wizrd-cli/wizrd": ["@wizrd-cli/wizrd@workspace:packages/wizrd"],
 
     "bun-types": ["bun-types@1.3.13", "", { "dependencies": { "@types/node": "*" } }, "sha512-QXKeHLlOLqQX9LgYaHJfzdBaV21T63HhFJnvuRCcjZiaUDpbs5ED1MgxbMra71CsryN/1dAoXuJJJwIv/2drVA=="],
 
