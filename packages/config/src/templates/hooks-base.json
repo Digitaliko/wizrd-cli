@@ -1,0 +1,53 @@
+{
+  "UserPromptSubmit": [
+    {
+      "hooks": [
+        {
+          "type": "command",
+          "command": "bash $SUPERSET_HOME_DIR/hooks/notify.sh 2>/dev/null || true"
+        }
+      ]
+    }
+  ],
+  "Stop": [
+    {
+      "hooks": [
+        {
+          "type": "command",
+          "command": "bash $SUPERSET_HOME_DIR/hooks/notify.sh 2>/dev/null || true"
+        }
+      ]
+    }
+  ],
+  "PostToolUse": [
+    {
+      "matcher": "Edit|Write",
+      "hooks": [
+        {
+          "type": "command",
+          "command": "bash $SUPERSET_HOME_DIR/hooks/notify.sh 2>/dev/null || true"
+        }
+      ]
+    }
+  ],
+  "PostToolUseFailure": [
+    {
+      "hooks": [
+        {
+          "type": "command",
+          "command": "bash $SUPERSET_HOME_DIR/hooks/notify.sh 2>/dev/null || true"
+        }
+      ]
+    }
+  ],
+  "PermissionRequest": [
+    {
+      "hooks": [
+        {
+          "type": "command",
+          "command": "bash $SUPERSET_HOME_DIR/hooks/notify.sh 2>/dev/null || true"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,15 @@
+{
+  "name": "@wizrd-cli/config",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "wizrd-config": "src/index.ts"
+  },
+  "dependencies": {
+    "@wizrd-cli/superset": "workspace:*"
+  },
+  "devDependencies": {
+    "bun-types": "latest"
+  }
+}

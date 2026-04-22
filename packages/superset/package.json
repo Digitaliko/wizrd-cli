@@ -6,6 +6,10 @@
   "bin": {
     "wizrd-superset": "src/index.ts"
   },
+  "exports": {
+    ".": "./src/index.ts",
+    "./lib/*": "./src/lib/*"
+  },
   "dependencies": {},
   "devDependencies": {
     "bun-types": "latest"

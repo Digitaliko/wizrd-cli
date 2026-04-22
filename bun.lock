@@ -5,6 +5,19 @@
     "": {
       "name": "wizrd-cli",
     },
+    "packages/config": {
+      "name": "@wizrd-cli/config",
+      "version": "0.1.0",
+      "bin": {
+        "wizrd-config": "src/index.ts",
+      },
+      "dependencies": {
+        "@wizrd-cli/superset": "workspace:*",
+      },
+      "devDependencies": {
+        "bun-types": "latest",
+      },
+    },
     "packages/superset": {
       "name": "@wizrd-cli/superset",
       "version": "0.1.0",
@@ -18,6 +31,8 @@
   },
   "packages": {
     "@types/node": ["@types/node@25.6.0", "", { "dependencies": { "undici-types": "~7.19.0" } }, "sha512-+qIYRKdNYJwY3vRCZMdJbPLJAtGjQBudzZzdzwQYkEPQd+PJGixUL5QfvCLDaULoLv+RhT3LDkwEfKaAkgSmNQ=="],
+
+    "@wizrd-cli/config": ["@wizrd-cli/config@workspace:packages/config"],
 
     "@wizrd-cli/superset": ["@wizrd-cli/superset@workspace:packages/superset"],
 
