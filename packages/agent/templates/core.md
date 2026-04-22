@@ -23,11 +23,26 @@ All outputs go to the wizrd level they belong to:
 All code and config changes MUST use git worktrees for isolation. Create the worktree inside the repo you're changing.
 
 ## Navigation Rule
-This repo is self-contained. All client projects, services, and code live inside as git submodules. When the user mentions a client:
-1. Check `clients/` for the matching submodule
-2. Check the client's L1 wizrd (`clients/{name}/wizrd/`) for CLAUDE.md
-3. Navigate into L2 service submodules (`services/{service}/`)
-4. Never assume files are at L0 — client code is always nested
+This repo is self-contained. All client projects, services, and code live inside as git submodules.
+
+**Decision tree when user mentions a client:**
+1. `cd clients/{name}/wizrd/` — enter the L1 wizrd
+2. Read CLAUDE.md — get client context, active services, current state
+3. `cd services/{service}/` — enter L2 for code work
+4. `git fetch --all && git branch -a` — see what's there LOCALLY
+5. Never assume files are at L0 — client code is always nested
+
+**Local first, API last:**
+- ALWAYS check out branches locally and use `git log`, `git diff` — never `gh api` for commits/diffs
+- Use `git log origin/main..branch --oneline` to count commits BEFORE looking at diff size
+- If submodules aren't initialized: `git submodule init && git submodule update`
+- If L1 has no `.gitmodules` but repos exist on GitHub: flag this as broken setup, ask user
+
+**Avoid these mistakes:**
+- Don't use `gh api` to read commits/branches when you can checkout locally
+- Don't assume which client a meeting is about — ask if ambiguous
+- Don't look at `git diff --stat` before checking commit count — a branch may carry unrelated commits
+- Don't re-discover the same information — note branch names and commit hashes on first lookup
 
 ## Guardrails
 - Never share client-specific data publicly (anonymize case studies)
