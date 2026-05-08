@@ -17,6 +17,7 @@ import { teardown } from "./commands/teardown.ts";
 import { ports } from "./commands/ports.ts";
 import { initRepo } from "./commands/init-repo.ts";
 import { doctor } from "./commands/doctor.ts";
+import { sync } from "./commands/sync.ts";
 
 const COMMANDS: Record<string, () => Promise<void>> = {
   setup,
@@ -25,6 +26,7 @@ const COMMANDS: Record<string, () => Promise<void>> = {
   ports,
   "init-repo": initRepo,
   doctor,
+  sync,
 };
 
 const command = process.argv[2];
@@ -37,6 +39,7 @@ Usage:
 
 Commands:
   setup       Init submodules, copy env, allocate ports, install deps
+  sync        Reset all submodules to default branch + pull latest
   run         Start dev servers + Docker with allocated ports
   teardown    Kill processes, release ports, Docker down
   ports       Show global port allocation table
