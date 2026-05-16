@@ -1,0 +1,30 @@
+name: 'Wizrd Code Review'
+description: 'Run Claude-based PR code review using the wizrd CODE_REVIEW.md checklist. STUB — port pending.'
+inputs:
+  mode:
+    description: 'simple | full'
+    required: false
+    default: 'simple'
+  ci_command:
+    description: 'Optional CI command to run before review (e.g., bun test). Empty = skip.'
+    required: false
+    default: ''
+  claude_token:
+    description: 'CLAUDE_CODE_OAUTH_TOKEN secret (pass via inputs since composite actions cannot read secrets).'
+    required: false
+    default: ''
+runs:
+  using: composite
+  steps:
+    - name: Stub notice
+      shell: bash
+      run: |
+        echo "::warning::wizrd-cli/.github/actions/code-review is a STUB."
+        echo "TODO — port the body of L0 .github/workflows/claude-code-review.yml into this composite action."
+        echo "Inputs (planned):"
+        echo "  mode         : ${{ inputs.mode }}"
+        echo "  ci_command   : ${{ inputs.ci_command }}"
+        echo "  claude_token : (set: ${{ inputs.claude_token != '' }})"
+        echo ""
+        echo "Until ported, callers should keep using anthropics/claude-code-action@v1 directly."
+        exit 0

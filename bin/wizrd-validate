@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+# wizrd validate — run wizrd validation against the current repo.
+# Level auto-detected from CLAUDE.md (override with WIZRD_LEVEL env var).
+set -euo pipefail
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+exec bash "$SCRIPT_DIR/validate/validate.sh" "$@"

@@ -1,0 +1,29 @@
+name: 'Wizrd Validate'
+description: 'Run wizrd validation against the current repo. Level auto-detected from CLAUDE.md.'
+inputs:
+  level:
+    description: 'L0 | L1 | L2 (auto-detected from CLAUDE.md if empty)'
+    required: false
+    default: ''
+  ref:
+    description: 'wizrd-cli ref to use (default: v1 — pin to v1.x.y for stability).'
+    required: false
+    default: 'v1'
+runs:
+  using: composite
+  steps:
+    - name: Checkout wizrd-cli
+      uses: actions/checkout@v4
+      with:
+        repository: Digitaliko/wizrd-cli
+        ref: ${{ inputs.ref }}
+        token: ${{ github.token }}
+        path: .wizrd-cli
+    - name: Run validate
+      shell: bash
+      run: |
+        chmod +x .wizrd-cli/validate/validate.sh .wizrd-cli/validate/lib/*.sh .wizrd-cli/validate/checks/*.sh
+        bash .wizrd-cli/validate/validate.sh --ci
+      env:
+        WIZRD_LEVEL: ${{ inputs.level }}
+        WIZRD_REPO_ROOT: ${{ github.workspace }}

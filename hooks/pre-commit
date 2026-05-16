@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+# wizrd pre-commit hook
+# Runs `wizrd validate` against the current repo before allowing a commit.
+# Bypass with: git commit --no-verify
+
+set -euo pipefail
+
+WIZRD_CLI="${WIZRD_CLI_DIR:-$HOME/.wizrd-cli}"
+
+if [ ! -f "$WIZRD_CLI/validate/validate.sh" ]; then
+  echo "wizrd-cli not found at $WIZRD_CLI."
+  echo "Install: git clone git@github.com:Digitaliko/wizrd-cli.git $WIZRD_CLI && cd $WIZRD_CLI && ./install.sh"
+  exit 1
+fi
+
+# Best-effort pull latest v1 (don't fail commit if offline or detached HEAD)
+git -C "$WIZRD_CLI" fetch origin v1 --quiet 2>/dev/null || true
+git -C "$WIZRD_CLI" reset --hard origin/v1 --quiet 2>/dev/null || true
+
+# Run from repo root (PWD when git invokes the hook is the repo root)
+if ! bash "$WIZRD_CLI/validate/validate.sh"; then
+  echo
+  echo "wizrd validate failed. Fix the issues above or bypass with: git commit --no-verify"
+  exit 1
+fi

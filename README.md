@@ -59,6 +59,76 @@ wizrd config show              # Dry run
 wizrd config doctor            # Check config health
 ```
 
+### `wizrd-validate` — Repo Validation
+
+Run the deterministic validator against the current repo. Level auto-detected from `CLAUDE.md`.
+
+```bash
+wizrd-validate                 # Run all checks (current repo, auto-detected level)
+wizrd-validate --ci            # CI mode (no colors)
+wizrd-validate --check 04      # Run only checks matching prefix "04"
+WIZRD_LEVEL=L2 wizrd-validate  # Force a level
+```
+
+Exit codes: `0` pass, `1` warnings, `2` critical.
+
+### `wizrd-hook` — Pre-commit Hook
+
+Installs a symlink at `.git/hooks/pre-commit` pointing to `~/.wizrd-cli/hooks/pre-commit`. The hook runs `wizrd-validate` and blocks commits on critical failures. Bypass with `git commit --no-verify`.
+
+```bash
+wizrd-hook install             # Install in current repo
+wizrd-hook uninstall           # Remove
+wizrd-hook status              # Check
+```
+
+The hook best-effort pulls `origin/v1` of wizrd-cli before each run, so the harness stays current without per-repo updates.
+
+### `wizrd-seed-labels` — Canonical Labels
+
+Seed wizrd labels (p0–p3, in-progress, blocked, review, plus level-specific) on any repo.
+
+```bash
+wizrd-seed-labels L1 Digitaliko/kiaba-wizrd
+wizrd-seed-labels L2 Digitaliko/kiaba-ispediter
+```
+
+See `.claude/rules/github-labels.md` (in any wizrd) for the canonical spec.
+
+## Harness — CI usage
+
+Any wizrd repo (L0/L1/L2) can call the composite action:
+
+```yaml
+# .github/workflows/validate.yml
+name: validate
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: Digitaliko/wizrd-cli/.github/actions/validate@v1
+```
+
+Optional inputs:
+- `level` — force `L0|L1|L2` (default: auto-detect from `CLAUDE.md`)
+- `ref`   — wizrd-cli ref to use (default: `v1`)
+
+### Versioning
+
+- `@v1` — floating major tag. Auto-receives non-breaking updates. Recommended for most repos.
+- `@v1.0.0` — immutable patch tag. Pin if you need bit-for-bit reproducibility.
+- Breaking changes bump to `v2` (new major). The `v1` tag continues receiving compatible fixes.
+
+`Digitaliko/wizrd-cli` is private — the composite action uses `github.token`, which works across the same org without extra setup.
+
+### Code review action (stub)
+
+`Digitaliko/wizrd-cli/.github/actions/code-review@v1` is currently a stub. Until ported, keep using `anthropics/claude-code-action@v1` directly in `claude-code-review.yml`. Planned inputs: `mode`, `ci_command`, `claude_token`.
+
 ### `wizrd superset` — Workspace Lifecycle
 
 ```bash

@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+# wizrd seed-labels — seed canonical wizrd labels on a GitHub repo.
+# Usage: wizrd-seed-labels <L0|L1|L2> <owner/repo>
+set -euo pipefail
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+exec bash "$SCRIPT_DIR/seed-labels.sh" "$@"
