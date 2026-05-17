@@ -28,8 +28,18 @@ fi
 
 log_info "Total always-loaded context: $total_lines lines"
 
+# Severity by level: L0/L1 strict (Claude operates against the brain layer often),
+# L2 advisory (project code repos may need more context — judge case by case).
+case "$WIZRD_LEVEL" in
+    L0|L1) OVER_BUDGET=critical ;;
+    *)     OVER_BUDGET=warning  ;;
+esac
+
 if [ "$total_lines" -gt 800 ]; then
-    log_critical "Context budget exceeded: $total_lines lines (max 800). Move content to knowledge-base/ or skills."
+    case "$OVER_BUDGET" in
+        critical) log_critical "Context budget exceeded: $total_lines lines (max 800). Move content to knowledge-base/ or skills." ;;
+        warning)  log_warning  "Context budget exceeded: $total_lines lines (advisory at L2, max 800)" ;;
+    esac
 elif [ "$total_lines" -gt 600 ]; then
     log_warning "Context budget high: $total_lines lines (warning at 600, max 800)"
 else
