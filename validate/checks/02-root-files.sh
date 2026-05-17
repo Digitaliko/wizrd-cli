@@ -9,23 +9,33 @@ else
     log_critical "Missing CLAUDE.md"
 fi
 
-if [ -f "AI-AGENTS.md" ]; then
-    log_pass "AI-AGENTS.md exists"
-else
-    log_warning "Missing AI-AGENTS.md"
-fi
+# Governance files — strict at L0 (company OS spine), advisory at L1/L2
+case "$WIZRD_LEVEL" in
+    L0)
+        AI_AGENTS_SEVERITY=warning
+        HOWTO_SEVERITY=warning
+        CONSTITUTION_SEVERITY=critical
+        ;;
+    *)
+        AI_AGENTS_SEVERITY=info
+        HOWTO_SEVERITY=info
+        CONSTITUTION_SEVERITY=info
+        ;;
+esac
 
-if [ -f "HOW-TO.md" ]; then
-    log_pass "HOW-TO.md exists"
-else
-    log_warning "Missing HOW-TO.md"
-fi
-
-if [ -f "CONSTITUTION.md" ]; then
-    log_pass "CONSTITUTION.md exists"
-else
-    log_critical "Missing CONSTITUTION.md"
-fi
+for spec in "AI-AGENTS.md:$AI_AGENTS_SEVERITY" "HOW-TO.md:$HOWTO_SEVERITY" "CONSTITUTION.md:$CONSTITUTION_SEVERITY"; do
+    file="${spec%%:*}"
+    sev="${spec##*:}"
+    if [ -f "$file" ]; then
+        log_pass "$file exists"
+    else
+        case "$sev" in
+            critical) log_critical "Missing $file" ;;
+            warning)  log_warning  "Missing $file" ;;
+            info)     log_info     "Missing $file (advisory at this level)" ;;
+        esac
+    fi
+done
 
 # Root hygiene — no stale media or planning docs
 for file in *.jpeg *.png *.jpg; do
