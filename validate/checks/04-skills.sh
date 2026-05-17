@@ -1,13 +1,21 @@
 #!/bin/bash
-# Check: Skill quality — harness methodology enforcement
-# Every skill MUST have: frontmatter, Playbook, Quality Gate, Decision Authority, Guardrails
-# This is the deterministic layer that controls LLM skill quality.
+# Check: Skill quality — level-aware harness methodology enforcement
+#
+# Level rules:
+#   L0  — every skill MUST have frontmatter + Playbook + Quality Gate + Decision Authority + Guardrails
+#   L1  — light: frontmatter only (skills inherited from L0 are referenced, not duplicated)
+#   L2  — light: frontmatter only (project-specific skills may follow project conventions)
+#
+# Deprecated skills (description starts with "Deprecated") are exempt from section requirements
+# but still need frontmatter.
 
-log_info "Validating skills..."
+log_info "Validating skills (level: ${WIZRD_LEVEL:-auto})..."
 
 if [ ! -d ".claude/skills" ]; then
     return 0 2>/dev/null || exit 0
 fi
+
+LEVEL="${WIZRD_LEVEL:-L0}"
 
 SKILL_COUNT=0
 SKILL_NAMES=()
@@ -29,7 +37,7 @@ for skill_dir in .claude/skills/*/; do
     SKILL_COUNT=$((SKILL_COUNT+1))
     SKILL_NAMES+=("$skill_name")
 
-    # --- Frontmatter ---
+    # --- Frontmatter (required at all levels) ---
     if ! has_frontmatter "$skill_file"; then
         log_critical "Skill '$skill_name' missing YAML frontmatter"
         continue
@@ -49,36 +57,43 @@ for skill_dir in .claude/skills/*/; do
         fi
     fi
 
-    # --- Required sections (harness methodology) ---
-
-    # Playbook: WHY the skill exists
-    if ! has_section "$skill_file" "Playbook"; then
-        log_critical "Skill '$skill_name' missing ## Playbook section (WHY the skill exists)"
+    # Deprecated skills are exempt from body-section requirements
+    is_deprecated="no"
+    if [ -n "$description" ]; then
+        case "$description" in
+            Deprecated*|deprecated*) is_deprecated="yes" ;;
+        esac
     fi
 
-    # Quality Gate: deterministic checks before skill reports done
-    if ! has_section "$skill_file" "Quality Gate"; then
-        log_critical "Skill '$skill_name' missing ## Quality Gate section"
-    else
-        # Quality gate should have L1/L2/L3 tiers
-        if ! grep -q "### L1" "$skill_file"; then
-            log_warning "Skill '$skill_name' Quality Gate missing ### L1 (auto-block) tier"
+    # --- Body section requirements (L0 strict; L1/L2 light) ---
+    if [ "$LEVEL" = "L0" ] && [ "$is_deprecated" = "no" ]; then
+        # Playbook: WHY the skill exists
+        if ! has_section "$skill_file" "Playbook"; then
+            log_critical "Skill '$skill_name' missing ## Playbook section (WHY the skill exists)"
         fi
-        if ! grep -q "### L2" "$skill_file"; then
-            log_warning "Skill '$skill_name' Quality Gate missing ### L2 (human-review) tier"
+
+        # Quality Gate: deterministic checks before skill reports done
+        if ! has_section "$skill_file" "Quality Gate"; then
+            log_critical "Skill '$skill_name' missing ## Quality Gate section"
+        else
+            if ! grep -q "### L1" "$skill_file"; then
+                log_warning "Skill '$skill_name' Quality Gate missing ### L1 (auto-block) tier"
+            fi
+            if ! grep -q "### L2" "$skill_file"; then
+                log_warning "Skill '$skill_name' Quality Gate missing ### L2 (human-review) tier"
+            fi
         fi
-    fi
 
-    # Decision Authority: what can auto-execute vs needs approval
-    if ! has_section "$skill_file" "Decision Authority"; then
-        log_warning "Skill '$skill_name' missing ## Decision Authority section"
-    fi
+        # Decision Authority: what can auto-execute vs needs approval
+        if ! has_section "$skill_file" "Decision Authority"; then
+            log_warning "Skill '$skill_name' missing ## Decision Authority section"
+        fi
 
-    # Guardrails: Do/Don't/Escalate
-    if ! has_section "$skill_file" "Guardrails" && ! grep -q "^## Guardrails" "$skill_file"; then
-        # Some skills use "Guardrails" as part of another section name
-        if ! grep -q "Guardrails" "$skill_file"; then
-            log_warning "Skill '$skill_name' missing ## Guardrails section (Do/Don't/Escalate)"
+        # Guardrails: Do/Don't/Escalate
+        if ! has_section "$skill_file" "Guardrails" && ! grep -q "^## Guardrails" "$skill_file"; then
+            if ! grep -q "Guardrails" "$skill_file"; then
+                log_warning "Skill '$skill_name' missing ## Guardrails section (Do/Don't/Escalate)"
+            fi
         fi
     fi
 
