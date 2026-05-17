@@ -1,30 +1,144 @@
 name: 'Wizrd Code Review'
-description: 'Run Claude-based PR code review using the wizrd CODE_REVIEW.md checklist. STUB — port pending.'
+description: 'Run Claude-based PR code review with auto-discovery of REVIEW_RULES.md / CODE_REVIEW.md / CLAUDE.md. Pinned to anthropics/claude-code-action@v1.'
 inputs:
+  claude_token:
+    description: 'CLAUDE_CODE_OAUTH_TOKEN secret (composite actions cannot read secrets directly — caller must pass it in).'
+    required: true
+  review_rules_path:
+    description: 'Explicit path to the review rules file. If empty, auto-discovers REVIEW_RULES.md → CODE_REVIEW.md → CLAUDE.md.'
+    required: false
+    default: ''
+  agent_context_path:
+    description: 'Path to additional agent context (e.g. .claude/ci-agent-context.md). Auto-discovered if empty.'
+    required: false
+    default: ''
   mode:
-    description: 'simple | full'
+    description: 'simple = review only. full = also allow ci_command in-review for re-runs.'
     required: false
     default: 'simple'
   ci_command:
-    description: 'Optional CI command to run before review (e.g., bun test). Empty = skip.'
+    description: 'Shell command to run BEFORE review. Output is captured and passed to the prompt. Non-zero exit does not fail the job.'
     required: false
     default: ''
-  claude_token:
-    description: 'CLAUDE_CODE_OAUTH_TOKEN secret (pass via inputs since composite actions cannot read secrets).'
+  base_branch:
+    description: 'Base branch (context only — not used by review, but accepted for symmetry with claude-agent).'
     required: false
-    default: ''
+    default: 'main'
 runs:
   using: composite
   steps:
-    - name: Stub notice
+    - name: Discover review rules + agent context
+      id: discover
       shell: bash
       run: |
-        echo "::warning::wizrd-cli/.github/actions/code-review is a STUB."
-        echo "TODO — port the body of L0 .github/workflows/claude-code-review.yml into this composite action."
-        echo "Inputs (planned):"
-        echo "  mode         : ${{ inputs.mode }}"
-        echo "  ci_command   : ${{ inputs.ci_command }}"
-        echo "  claude_token : (set: ${{ inputs.claude_token != '' }})"
-        echo ""
-        echo "Until ported, callers should keep using anthropics/claude-code-action@v1 directly."
-        exit 0
+        set -e
+        RULES="${{ inputs.review_rules_path }}"
+        if [ -z "$RULES" ]; then
+          for candidate in REVIEW_RULES.md CODE_REVIEW.md CLAUDE.md; do
+            if [ -f "$candidate" ]; then RULES="$candidate"; break; fi
+          done
+        fi
+        AGENT="${{ inputs.agent_context_path }}"
+        if [ -z "$AGENT" ]; then
+          for candidate in .claude/ci-agent-context.md .claude/agent-context.md; do
+            if [ -f "$candidate" ]; then AGENT="$candidate"; break; fi
+          done
+        fi
+        echo "rules=$RULES" >> "$GITHUB_OUTPUT"
+        echo "agent=$AGENT" >> "$GITHUB_OUTPUT"
+        echo "Discovered rules: ${RULES:-<none>}"
+        echo "Discovered agent context: ${AGENT:-<none>}"
+
+    - name: Run CI command (pre-review)
+      id: ci
+      if: inputs.ci_command != ''
+      shell: bash
+      run: |
+        set +e
+        OUTFILE="$RUNNER_TEMP/ci-output.txt"
+        echo "Running: ${{ inputs.ci_command }}"
+        { ${{ inputs.ci_command }}; } > "$OUTFILE" 2>&1
+        CI_EXIT=$?
+        set -e
+        echo "ci_exit=$CI_EXIT" >> "$GITHUB_OUTPUT"
+        echo "ci_output_file=$OUTFILE" >> "$GITHUB_OUTPUT"
+        CI_TAIL=$(tail -c 12000 "$OUTFILE")
+        {
+          echo 'ci_output<<CI_EOF'
+          echo "$CI_TAIL"
+          echo 'CI_EOF'
+        } >> "$GITHUB_OUTPUT"
+        echo "CI exit code: $CI_EXIT"
+
+    - name: Run Claude Code Review
+      uses: anthropics/claude-code-action@v1
+      with:
+        claude_code_oauth_token: ${{ inputs.claude_token }}
+        use_sticky_comment: true
+        additional_permissions: |
+          actions: read
+        allowed_tools: |
+          Bash(git log:*),
+          Bash(git diff:*),
+          Bash(git show:*),
+          Bash(grep:*),
+          Bash(find:*),
+          Bash(ls:*),
+          Bash(cat:*),
+          Bash(head:*),
+          Bash(tail:*),
+          Bash(wc:*),
+          Bash(gh pr diff:*),
+          Bash(gh pr view:*),
+          Bash(${{ inputs.ci_command }}),
+          Read,
+          Glob,
+          Grep
+        direct_prompt: |
+          You are a senior code reviewer for **${{ github.repository }}** PR #${{ github.event.pull_request.number }}.
+
+          ## Step 0 — Load context
+
+          ${{ steps.discover.outputs.rules != '' && format('**Read `{0}` FIRST**. It contains the review checklist for this repo. If it uses rule codes (B/R/A), reference them in your output. If it is prose (e.g. CLAUDE.md), extract the relevant rules and apply them.', steps.discover.outputs.rules) || 'No REVIEW_RULES.md / CODE_REVIEW.md / CLAUDE.md found. Apply standard senior-engineer judgement: correctness, security, simplicity, test coverage.' }}
+
+          ${{ steps.discover.outputs.agent != '' && format('Also read `{0}` for additional repo-specific context.', steps.discover.outputs.agent) || '' }}
+
+          ## Step 1 — Review the diff
+
+          Read the PR diff (`git diff origin/${{ inputs.base_branch }}...HEAD` or via `gh pr diff`). Focus on changed files only.
+
+          ${{ inputs.ci_command != '' && format('## Step 2 — CI results
+
+          The following command was run before review: `{0}` (exit code: {1}).
+
+          ```
+          {2}
+          ```
+
+          If CI failed, weave the failure into your BLOCKING section.', inputs.ci_command, steps.ci.outputs.ci_exit, steps.ci.outputs.ci_output) || '' }}
+
+          ## Step 3 — Output format
+
+          Use this exact structure:
+
+          ### 🔴 BLOCKING (must fix before merge)
+          Critical issues: bugs, security, broken builds, data loss. Reference rule codes if available + `file:line`.
+          If none: "No blocking issues found."
+
+          ### 🟡 REQUIRED (should fix before merge)
+          Quality issues: missing tests, DRY violations, error handling, type safety. Reference rule codes + `file:line`.
+          If none: "No required fixes."
+
+          ### 🟢 ADVISORY (reviewer discretion)
+          Style preferences, refactor opportunities. Skip if none.
+
+          ### ✅ What's Good
+          2-3 specific things done well.
+
+          ## Guidelines
+
+          - Be concise. Max ~30 lines combined for BLOCKING + REQUIRED.
+          - Always cite `file:line` for code findings.
+          - Group repeated patterns into one finding.
+          - Do not flag auto-generated files, lockfiles, or migration boilerplate.
+          - When you spot a potential DRY violation, actually grep the codebase before flagging.
