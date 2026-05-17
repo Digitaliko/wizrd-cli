@@ -11,12 +11,16 @@ for agent_file in .claude/agents/*.md; do
     [ -f "$agent_file" ] || continue
     agent_name=$(basename "$agent_file" .md)
 
-    # Skip template
+    # Skip template + non-agent docs (README, CHANGELOG, etc.)
     [ "$agent_name" = "_template" ] && continue
+    case "$agent_name" in
+        README|CHANGELOG|LICENSE|*-doc|*-docs|TODO|NOTES) continue ;;
+    esac
 
-    # Frontmatter
+    # Frontmatter — silently skip files without it (likely docs, not agents).
+    # A real agent file with broken frontmatter will be caught by missing required fields below.
     if ! has_frontmatter "$agent_file"; then
-        log_critical "Agent '$agent_name' missing YAML frontmatter"
+        log_info "Skipping '$agent_name' (no frontmatter — not an agent file)"
         continue
     fi
 

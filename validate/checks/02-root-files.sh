@@ -3,10 +3,14 @@
 
 log_info "Checking root files..."
 
+# CLAUDE.md required at L0/L1 (wizrd convention), advisory at L2 (project varies)
 if [ -f "CLAUDE.md" ]; then
     log_pass "CLAUDE.md exists"
 else
-    log_critical "Missing CLAUDE.md"
+    case "$WIZRD_LEVEL" in
+        L0|L1) log_critical "Missing CLAUDE.md" ;;
+        *)     log_warning  "Missing CLAUDE.md (advisory at L2)" ;;
+    esac
 fi
 
 # Governance files — strict at L0 (company OS spine), advisory at L1/L2
