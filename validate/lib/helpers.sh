@@ -75,9 +75,31 @@ count_body_lines() {
     echo "$count"
 }
 
-# Detect wizrd level from CLAUDE.md
+# Detect wizrd level from CLAUDE.md or repo conventions.
+# Order:
+#   1. Explicit "## Wizrd Level: LN" marker in CLAUDE.md
+#   2. Frontmatter `level: LN` field
+#   3. Repo name heuristics — L0 = `digitaliko-wizrd`, L1 = `*-wizrd`, else L2
+#   4. Default L1 (most common — fail-safe)
 detect_level() {
     if [ -f "CLAUDE.md" ]; then
-        grep -o "Wizrd Level: L[0-9]" CLAUDE.md 2>/dev/null | head -1 | sed 's/Wizrd Level: //'
+        local marker
+        marker=$(grep -o "Wizrd Level: L[0-9]" CLAUDE.md 2>/dev/null | head -1 | sed 's/Wizrd Level: //')
+        if [ -n "$marker" ]; then echo "$marker"; return; fi
+
+        local fm
+        fm=$(awk '/^---$/{c++;next} c==1 && /^level:/{print; exit}' CLAUDE.md 2>/dev/null | sed 's/level: *//;s/ .*//')
+        if [ -n "$fm" ]; then echo "$fm"; return; fi
     fi
+
+    # Repo-name heuristic — works inside a git repo
+    local origin
+    origin=$(git config --get remote.origin.url 2>/dev/null | sed 's|.*/||;s|\.git$||')
+    case "$origin" in
+        digitaliko-wizrd) echo "L0"; return ;;
+        *-wizrd)          echo "L1"; return ;;
+    esac
+
+    # Fail-safe default: treat as L1 (lightest required structure)
+    echo "L1"
 }
