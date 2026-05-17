@@ -1,5 +1,5 @@
-name: 'Wizrd Claude Agent'
-description: 'On-demand @claude agent for issue comments, PR comments, reviews, and ai: implement label. Loads optional .claude/ci-agent-context.md as system prompt. Pinned to anthropics/claude-code-action@v1.'
+name: 'Wizrd Agent'
+description: 'On-demand wizrd agent for issue comments, PR comments, reviews, and ai: implement label. Loads optional .claude/ci-agent-context.md as system prompt. Pinned to anthropics/claude-code-action@v1.'
 inputs:
   claude_token:
     description: 'CLAUDE_CODE_OAUTH_TOKEN secret (composite actions cannot read secrets directly — caller must pass it in).'
