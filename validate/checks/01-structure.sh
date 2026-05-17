@@ -3,18 +3,22 @@
 
 log_info "Checking directory structure..."
 
+# Required vs advisory dirs per level.
+# L0: strict (the company OS needs all top-level dirs).
+# L1: light — wizrds are doc-heavy, may or may not have services/skills.
+# L2: project-specific, no shared structure requirement.
 case "$WIZRD_LEVEL" in
     L0)
         REQUIRED_DIRS=(".claude/agents" ".claude/skills" "clients" "knowledge-base" "services")
+        ADVISORY_DIRS=()
         ;;
     L1)
-        REQUIRED_DIRS=(".claude/skills" "services" "knowledge-base")
-        ;;
-    L2)
         REQUIRED_DIRS=()
+        ADVISORY_DIRS=(".claude/skills" "services" "knowledge-base")
         ;;
-    *)
-        REQUIRED_DIRS=(".claude/agents" ".claude/skills" "clients" "knowledge-base" "services")
+    L2|*)
+        REQUIRED_DIRS=()
+        ADVISORY_DIRS=()
         ;;
 esac
 
@@ -24,6 +28,10 @@ for dir in "${REQUIRED_DIRS[@]}"; do
     else
         log_critical "Missing required directory: $dir"
     fi
+done
+
+for dir in "${ADVISORY_DIRS[@]}"; do
+    [ -d "$dir" ] && log_pass "Directory exists: $dir" || log_warning "Missing conventional directory: $dir (advisory)"
 done
 
 # Root directory hygiene (L0 only)
