@@ -23,7 +23,17 @@ runs:
       shell: bash
       run: |
         chmod +x .wizrd-cli/validate/validate.sh .wizrd-cli/validate/lib/*.sh .wizrd-cli/validate/checks/*.sh
+        set +e
         bash .wizrd-cli/validate/validate.sh --ci
+        EXIT_CODE=$?
+        set -e
+        # 0 = pass, 1 = warnings (annotate but pass), 2 = critical (fail).
+        if [ "$EXIT_CODE" -eq 2 ]; then
+          echo "::error::Wizrd validation failed with critical issues"
+          exit 1
+        elif [ "$EXIT_CODE" -eq 1 ]; then
+          echo "::warning::Wizrd validation passed with warnings"
+        fi
       env:
         WIZRD_LEVEL: ${{ inputs.level }}
         WIZRD_REPO_ROOT: ${{ github.workspace }}
