@@ -1,20 +1,25 @@
 name: Wizrd Review
 
+# Multi-agent PR code review.
+#
+# Uses the official Anthropic `code-review@claude-code-plugins` slash command
+# which spawns 4 parallel agents (2× CLAUDE.md compliance, 1× bug detector,
+# 1× git-history context), confidence-scores findings (≥80 to surface), and
+# posts the result on the PR.
+#
+# `extra_instructions` lets callers add repo-specific rules (e.g. point at
+# REVIEW_RULES.md / CODE_REVIEW.md, append B/R/A rule codes, override format).
+# The plugin agents see this text as additional context.
+#
+# NOTE: claude-code-action@v1 only runs on PRs where the calling workflow
+# file is identical to the version on `main`. First-time setup: merge the
+# caller's wizrd.yml to main BEFORE expecting reviews on feature branches.
+
 on:
   workflow_call:
     inputs:
-      review_style:
-        description: 'concise | thorough'
-        required: false
-        type: string
-        default: 'concise'
-      confidence_threshold:
-        description: 'Minimum confidence (0-100) to include an issue. Lower = noisier.'
-        required: false
-        type: number
-        default: 80
       extra_instructions:
-        description: 'Optional extra prompt text appended to the review prompt.'
+        description: 'Optional repo-specific guidance appended to the slash command. Use this to point at REVIEW_RULES.md, add rule codes, etc.'
         required: false
         type: string
         default: ''
@@ -37,108 +42,29 @@ jobs:
     steps:
       - uses: actions/checkout@v5
         with:
-          fetch-depth: 0
+          fetch-depth: 1
 
       - uses: anthropics/claude-code-action@v1
         with:
           claude_code_oauth_token: ${{ secrets.claude_token }}
-          additional_permissions: |
-            actions: read
-          claude_args: >-
-            --allowed-tools
-            "Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr comment:*),Bash(gh issue view:*),Bash(gh api:*),Bash(git log:*),Bash(git diff:*),Bash(git show:*),Bash(git blame:*),Bash(grep:*),Bash(find:*),Bash(ls:*),Bash(cat:*),Bash(head:*),Bash(tail:*),Bash(wc:*),Read,Glob,Grep,Task"
+          plugin_marketplaces: 'https://github.com/anthropics/claude-code.git'
+          plugins: 'code-review@claude-code-plugins'
           prompt: |
-            You are the Wizrd code reviewer for PR ${{ github.event.pull_request.number }} in **${{ github.repository }}**.
+            /code-review:code-review ${{ github.repository }}/pull/${{ github.event.pull_request.number }}
 
-            ## Step 1 — Should we review?
+            Before reviewing, read these if present (in this order — first one wins):
+            REVIEW_RULES.md → CODE_REVIEW.md → CLAUDE.md → .claude/ci-agent-context.md
 
-            Run `gh pr view ${{ github.event.pull_request.number }} --json state,isDraft,title,body,comments,additions,deletions,files`.
+            If REVIEW_RULES.md uses rule codes (e.g. B1, R3, A2), reference them
+            verbatim in each finding.
 
-            Skip (exit without posting anything) if any of:
-            - PR is closed or merged.
-            - PR is draft.
-            - PR is trivial: <10 changed lines, OR only touches lockfiles / generated files / docs typos.
-            - A previous Wizrd review comment already exists (look for `<!-- wizrd-review -->` marker in existing comments). If one exists, update plan: post a fresh comment only if there are NEW commits since the last review — otherwise skip.
+            Use this output format:
+              ### 🔴 BLOCKING (must fix before merge)
+              ### 🟡 REQUIRED (should fix before merge)
+              ### 🟢 ADVISORY (reviewer discretion — skip section if none)
+              ### ✅ What's Good
 
-            If skipping, log the reason and stop. Do NOT post anything.
-
-            ## Step 2 — Load review rules
-
-            Read the FIRST file that exists (in this order). Treat its content as the canonical review checklist:
-
-            1. `REVIEW_RULES.md` — repo-specific checklist. May use rule codes (e.g. B1, R3, A2). Reference codes verbatim in findings.
-            2. `CODE_REVIEW.md` — same idea, alternate name.
-            3. `CLAUDE.md` — prose project rules. Extract the relevant ones.
-            4. `.claude/ci-agent-context.md` — additional CI agent context.
-
-            If none exist, apply standard senior-engineer judgement: correctness, security, simplicity, tests, performance, error handling, type safety.
-
-            ## Step 3 — Read the diff
-
-            `gh pr diff ${{ github.event.pull_request.number }}` — focus only on changed lines.
-
-            For non-trivial PRs (>50 changed lines OR >5 files), spawn parallel sub-agents via the Task tool:
-            - **Agent A: Rules compliance** — verify every changed file against the loaded review rules. Reference rule codes if available.
-            - **Agent B: Bug detector** — look for obvious bugs IN THE CHANGES (not pre-existing). Off-by-one, null deref, race conditions, missing await, wrong API, broken happy path.
-            - **Agent C: Context analyzer** — for any suspicious change, run `git blame` / `git log -p` on surrounding lines to understand why it was that way before. Flag refactors that silently change behaviour.
-
-            For small PRs, do it inline.
-
-            ## Step 4 — Score findings
-
-            Each finding gets a confidence score 0-100:
-            - 0-24: false positive / not confident → DROP
-            - 25-49: might be real → DROP
-            - 50-74: probably real but minor → DROP
-            - 75-100: real and important → KEEP
-
-            Threshold: **${{ inputs.confidence_threshold }}**. Drop anything below.
-
-            Filter out:
-            - Pre-existing issues not introduced in this PR.
-            - Pedantic style nitpicks the linter would catch.
-            - Auto-generated files, lockfiles, migration boilerplate.
-            - Issues with `lint-disable` / `eslint-disable` / `# noqa` comments nearby.
-
-            ## Step 5 — Format the review
-
-            ```
-            <!-- wizrd-review -->
-            ## Wizrd review
-
-            <2-sentence PR overview based on the diff>
-
-            ### 🔴 BLOCKING (must fix before merge)
-            <issues; reference rule codes if available + file:line; if none: "No blocking issues found.">
-
-            ### 🟡 REQUIRED (should fix before merge)
-            <issues; if none: "No required fixes.">
-
-            ### 🟢 ADVISORY (reviewer discretion)
-            <skip section entirely if none>
-
-            ### ✅ What's Good
-            <2-3 specific things>
-
-            ---
-            <sub>Style: ${{ inputs.review_style }} · Threshold: ${{ inputs.confidence_threshold }} · ${{ github.sha }}</sub>
-            ```
-
-            For each finding cite `file:line` and link to the line on GitHub:
-            `https://github.com/${{ github.repository }}/blob/${{ github.event.pull_request.head.sha }}/<path>#L<line>`
-
-            Be concise. Max ~30 lines combined for BLOCKING + REQUIRED. Group repeated patterns into one finding.
-
-            ## Step 6 — POST THE REVIEW
-
-            This is the critical step. Use:
-
-            ```
-            gh pr comment ${{ github.event.pull_request.number }} \
-              --repo ${{ github.repository }} \
-              --body-file /tmp/wizrd-review.md
-            ```
-
-            Write the formatted review to `/tmp/wizrd-review.md` first (heredoc), then post. Do NOT skip this step. Do NOT just print the review to stdout — it MUST land on the PR.
+            Cite `file:line` for every code finding. Skip auto-generated files,
+            lockfiles, and migration boilerplate.
 
             ${{ inputs.extra_instructions }}
