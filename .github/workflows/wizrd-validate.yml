@@ -1,0 +1,54 @@
+name: Wizrd Validate
+
+on:
+  workflow_call:
+    inputs:
+      level:
+        description: 'L0 | L1 | L2 (auto-detected from CLAUDE.md if empty)'
+        required: false
+        type: string
+        default: ''
+      ref:
+        description: 'wizrd-cli ref (default: v1 — pin to v1.x.y for stability)'
+        required: false
+        type: string
+        default: 'v1'
+
+jobs:
+  validate:
+    name: validate
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout caller repo
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          submodules: false
+
+      - name: Checkout wizrd-cli
+        uses: actions/checkout@v5
+        with:
+          repository: Digitaliko/wizrd-cli
+          ref: ${{ inputs.ref }}
+          token: ${{ github.token }}
+          path: .wizrd-cli
+
+      - name: Run validate
+        shell: bash
+        run: |
+          chmod +x .wizrd-cli/validate/validate.sh .wizrd-cli/validate/lib/*.sh .wizrd-cli/validate/checks/*.sh
+          set +e
+          bash .wizrd-cli/validate/validate.sh --ci
+          EXIT_CODE=$?
+          set -e
+          if [ "$EXIT_CODE" -eq 2 ]; then
+            echo "::error::Wizrd validation failed with critical issues"
+            exit 1
+          elif [ "$EXIT_CODE" -eq 1 ]; then
+            echo "::warning::Wizrd validation passed with warnings"
+          fi
+        env:
+          WIZRD_LEVEL: ${{ inputs.level }}
+          WIZRD_REPO_ROOT: ${{ github.workspace }}
