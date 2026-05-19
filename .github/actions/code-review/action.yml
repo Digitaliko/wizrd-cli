@@ -77,24 +77,8 @@ runs:
         use_sticky_comment: true
         additional_permissions: |
           actions: read
-        allowed_tools: |
-          Bash(git log:*),
-          Bash(git diff:*),
-          Bash(git show:*),
-          Bash(grep:*),
-          Bash(find:*),
-          Bash(ls:*),
-          Bash(cat:*),
-          Bash(head:*),
-          Bash(tail:*),
-          Bash(wc:*),
-          Bash(gh pr diff:*),
-          Bash(gh pr view:*),
-          Bash(${{ inputs.ci_command }}),
-          Read,
-          Glob,
-          Grep
-        direct_prompt: |
+        claude_args: --allowed-tools "Bash(git log:*),Bash(git diff:*),Bash(git show:*),Bash(grep:*),Bash(find:*),Bash(ls:*),Bash(cat:*),Bash(head:*),Bash(tail:*),Bash(wc:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(${{ inputs.ci_command }}),Read,Glob,Grep"
+        prompt: |
           You are a senior code reviewer for **${{ github.repository }}** PR #${{ github.event.pull_request.number }}.
 
           ## Step 0 — Load context
