@@ -1,0 +1,97 @@
+name: Wizrd Agent
+
+on:
+  workflow_call:
+    inputs:
+      base_branch:
+        description: 'Base branch for PRs Claude creates.'
+        required: false
+        type: string
+        default: 'main'
+      branch_prefix:
+        description: 'Prefix for branches Claude creates.'
+        required: false
+        type: string
+        default: 'feat/'
+      branch_name_template:
+        description: 'Branch naming template.'
+        required: false
+        type: string
+        default: '{{prefix}}{{description}}'
+    secrets:
+      claude_token:
+        description: 'CLAUDE_CODE_OAUTH_TOKEN'
+        required: true
+
+jobs:
+  agent:
+    name: agent
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+      id-token: write
+      actions: read
+    steps:
+      - name: Remove ai:implement label (if present)
+        if: github.event_name == 'issues' && github.event.action == 'labeled' && github.event.label.name == 'ai: implement'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            try {
+              await github.rest.issues.removeLabel({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                name: 'ai: implement',
+              });
+            } catch (e) {
+              core.info(`Could not remove label: ${e.message}`);
+            }
+
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Discover agent context
+        id: discover
+        shell: bash
+        run: |
+          set -e
+          for candidate in .claude/ci-agent-context.md .claude/agent-context.md CLAUDE.md; do
+            if [ -f "$candidate" ]; then echo "agent=$candidate" >> "$GITHUB_OUTPUT"; break; fi
+          done
+
+      - name: Load agent instructions into env
+        if: steps.discover.outputs.agent != ''
+        shell: bash
+        run: |
+          {
+            echo 'INSTRUCTIONS<<AGENT_EOF'
+            cat "${{ steps.discover.outputs.agent }}"
+            echo 'AGENT_EOF'
+          } >> "$GITHUB_ENV"
+
+      - name: Run Claude Code (with context)
+        if: steps.discover.outputs.agent != ''
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.claude_token }}
+          base_branch: ${{ inputs.base_branch }}
+          branch_prefix: ${{ inputs.branch_prefix }}
+          branch_name_template: ${{ inputs.branch_name_template }}
+          additional_permissions: |
+            actions: read
+          claude_args: '--append-system-prompt "${{ env.INSTRUCTIONS }}"'
+
+      - name: Run Claude Code (no context)
+        if: steps.discover.outputs.agent == ''
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.claude_token }}
+          base_branch: ${{ inputs.base_branch }}
+          branch_prefix: ${{ inputs.branch_prefix }}
+          branch_name_template: ${{ inputs.branch_name_template }}
+          additional_permissions: |
+            actions: read

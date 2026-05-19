@@ -1,0 +1,61 @@
+name: Wizrd Review
+
+on:
+  workflow_call:
+    inputs:
+      review_style:
+        description: 'concise | thorough — appended to the plugin prompt as guidance.'
+        required: false
+        type: string
+        default: 'concise'
+      extra_instructions:
+        description: 'Optional extra prompt text appended after the plugin invocation (e.g. point at REVIEW_RULES.md / CLAUDE.md).'
+        required: false
+        type: string
+        default: ''
+    secrets:
+      claude_token:
+        description: 'CLAUDE_CODE_OAUTH_TOKEN'
+        required: true
+
+jobs:
+  review:
+    name: review
+    if: github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: read
+      id-token: write
+      actions: read
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 1
+
+      - uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.claude_token }}
+          plugin_marketplaces: 'https://github.com/anthropics/claude-code.git'
+          plugins: 'code-review@claude-code-plugins'
+          prompt: |
+            /code-review:code-review ${{ github.repository }}/pull/${{ github.event.pull_request.number }}
+
+            Review style: ${{ inputs.review_style }}.
+
+            Before reviewing, read these if present (auto-discovery order):
+            REVIEW_RULES.md → CODE_REVIEW.md → CLAUDE.md → .claude/ci-agent-context.md.
+            Apply rule codes from REVIEW_RULES.md if it uses them (B/R/A). Otherwise apply
+            standard senior-engineer judgement: correctness, security, simplicity, tests.
+
+            Categorise findings:
+            🔴 BLOCKING (must fix before merge)
+            🟡 REQUIRED (should fix before merge)
+            🟢 ADVISORY (reviewer discretion)
+            ✅ What's Good (2-3 specific things)
+
+            Be concise. Cite `file:line` for every code finding. Group repeated patterns.
+            Skip auto-generated files, lockfiles, migration boilerplate.
+
+            ${{ inputs.extra_instructions }}
