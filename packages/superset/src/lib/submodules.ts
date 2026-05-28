@@ -4,7 +4,7 @@
  * Uses object-store alternates to avoid re-cloning from remote in worktrees.
  */
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync, copyFileSync } from "fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync, copyFileSync, readdirSync, statSync } from "fs";
 import { join, resolve, dirname } from "path";
 
 interface SubmoduleResult {
@@ -88,27 +88,74 @@ function findMainModulesDir(dir: string): string | null {
 }
 
 /**
+ * Walk `<root>` and return paths (relative to root) of every git module dir
+ * under it — i.e. every dir containing `objects/`. Recurses into a module's
+ * own `modules/` subdir to discover nested submodules-of-submodules.
+ *
+ * Example: for a main checkout's `.git/modules/`, returns paths like
+ *   ["clients/riwers", "clients/riwers/modules/services/webapp", ...]
+ */
+function walkModuleDirs(root: string, current = ""): string[] {
+  const here = current ? join(root, current) : root;
+  if (!existsSync(here)) return [];
+
+  let entries: string[];
+  try {
+    entries = readdirSync(here);
+  } catch {
+    return [];
+  }
+
+  const results: string[] = [];
+  for (const entry of entries) {
+    const rel = current ? join(current, entry) : entry;
+    const abs = join(root, rel);
+    let isDir = false;
+    try {
+      isDir = statSync(abs).isDirectory();
+    } catch {
+      continue;
+    }
+    if (!isDir) continue;
+
+    if (existsSync(join(abs, "objects"))) {
+      results.push(rel);
+      if (existsSync(join(abs, "modules"))) {
+        results.push(...walkModuleDirs(root, join(rel, "modules")));
+      }
+    } else {
+      // Path component (e.g. "clients/") — descend looking for modules.
+      results.push(...walkModuleDirs(root, rel));
+    }
+  }
+  return results;
+}
+
+/**
  * Pre-create submodule module directories with alternates pointing to existing
  * object stores. This lets `git submodule update --init` skip the clone step
  * and just checkout — going from ~20s to <1s per submodule.
+ *
+ * Recurses into nested submodules (submodules-of-submodules) so `--recursive`
+ * inits stay instant when the parent submodule has its own `.gitmodules`.
  */
-function setupAlternates(dir: string, submodules: string[]): number {
+function setupAlternates(dir: string): number {
   const gitDir = resolveGitDir(dir);
   if (!gitDir) return 0;
 
   const mainModulesDir = findMainModulesDir(dir);
   if (!mainModulesDir) return 0;
 
+  const modulePaths = walkModuleDirs(mainModulesDir);
   let count = 0;
 
-  for (const sm of submodules) {
-    // Main module objects (shared across all worktrees)
-    const mainModuleDir = join(mainModulesDir, sm);
+  for (const rel of modulePaths) {
+    const mainModuleDir = join(mainModulesDir, rel);
     const mainObjectsDir = join(mainModuleDir, "objects");
     if (!existsSync(mainObjectsDir)) continue;
 
-    // Per-worktree module directory
-    const worktreeModuleDir = join(gitDir, "modules", sm);
+    // Per-worktree module directory mirrors the relative path under .git/modules.
+    const worktreeModuleDir = join(gitDir, "modules", rel);
     if (existsSync(join(worktreeModuleDir, "objects"))) continue; // Already set up
 
     // Create minimal git repo structure with alternates
@@ -151,8 +198,11 @@ export async function initSubmodules(
     return [];
   }
 
-  // Pre-populate object stores from existing modules (worktree optimization)
-  const cached = setupAlternates(dir, submodules);
+  // Pre-populate object stores from existing modules (worktree optimization).
+  // Walks the main checkout's .git/modules tree to also catch nested
+  // submodules — without this, --recursive falls back to network clone for
+  // any submodule-of-submodule.
+  const cached = setupAlternates(dir);
   if (cached > 0) {
     console.log(`  Cached ${cached} submodule(s) from local objects`);
   }
