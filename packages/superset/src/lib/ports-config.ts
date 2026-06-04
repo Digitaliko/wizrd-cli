@@ -14,6 +14,12 @@ export interface ServicePort {
 
 export interface PortsConfig {
   services: ServicePort[];
+  /**
+   * When true, `setup` auto-shifts to the next free port offset if 0 is taken.
+   * When false/missing (default), `setup` errors if 0 is taken so the operator
+   * makes an explicit choice. Equivalent to passing --shift on the CLI.
+   */
+  autoShift?: boolean;
 }
 
 const DEFAULT_PORTS: PortsConfig = {
