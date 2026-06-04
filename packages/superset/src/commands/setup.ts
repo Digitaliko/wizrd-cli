@@ -11,7 +11,7 @@ import { detectLevel, hasSubmodules } from "@wizrd-cli/shared";
 import { initSubmodules } from "../lib/submodules.ts";
 import { copyEnvFiles, applyPortOffset, writeEnvSuperset } from "../lib/env.ts";
 import { installDeps, installAllServiceDeps } from "../lib/deps.ts";
-import { allocate } from "../lib/port-registry.ts";
+import { allocate, OffsetTakenError, type AllocateMode } from "../lib/port-registry.ts";
 import { loadPortsConfig, portsToMap } from "../lib/ports-config.ts";
 import { basename } from "path";
 
@@ -22,6 +22,11 @@ export async function setup(): Promise<void> {
   const workspaceName = process.env.SUPERSET_WORKSPACE_NAME || basename(dir);
   const rootPath = process.env.SUPERSET_ROOT_PATH;
   const projectName = basename(dir);
+
+  // Port mode: default (offset 0) unless --shift / --auto-offset flag,
+  // or autoShift: true in .superset/ports.json.
+  const flags = process.argv.slice(3);
+  const shiftFlag = flags.includes("--shift") || flags.includes("--auto-offset");
 
   console.log(`=== wizrd-superset setup ===`);
   console.log(`  Level: ${info.level} (${info.label})`);
@@ -52,8 +57,19 @@ export async function setup(): Promise<void> {
   const portsConfig = await loadPortsConfig(dir);
   const defaultPorts = portsToMap(portsConfig);
 
-  const allocation = await allocate(workspaceName, dir, projectName, defaultPorts);
-  console.log(`Port allocation: offset +${allocation.offset}`);
+  const mode: AllocateMode = shiftFlag || portsConfig.autoShift ? "shift" : "default";
+
+  let allocation;
+  try {
+    allocation = await allocate(workspaceName, dir, projectName, defaultPorts, mode);
+  } catch (e) {
+    if (e instanceof OffsetTakenError) {
+      console.error(`\n${e.message}\n`);
+      process.exit(1);
+    }
+    throw e;
+  }
+  console.log(`Port allocation: offset +${allocation.offset}${mode === "shift" ? " (shifted)" : ""}`);
   for (const [name, port] of Object.entries(allocation.ports)) {
     console.log(`  ${name}: ${port}`);
   }

@@ -75,15 +75,32 @@ function nextAvailableOffset(registry: PortRegistry): number {
   return offset;
 }
 
+export type AllocateMode = "default" | "shift";
+
+export class OffsetTakenError extends Error {
+  constructor(public takenBy: PortAllocation) {
+    super(
+      `Offset +0 (canonical ports) is held by workspace '${takenBy.workspace}' (project: ${takenBy.project}).\n` +
+        `Either tear down that workspace, or re-run setup with --shift to auto-allocate the next free offset.`
+    );
+    this.name = "OffsetTakenError";
+  }
+}
+
 /**
  * Allocate a port offset for a workspace.
  * Returns the allocation (existing if already allocated).
+ *
+ * Modes:
+ *   - "default": use offset 0 (canonical ports). Throws OffsetTakenError if held by another live workspace.
+ *   - "shift":   auto-pick the next unused offset (legacy behavior).
  */
 export async function allocate(
   workspaceName: string,
   workspacePath: string,
   project: string,
-  defaultPorts: Record<string, number>
+  defaultPorts: Record<string, number>,
+  mode: AllocateMode = "default"
 ): Promise<PortAllocation> {
   const registry = await loadRegistry();
 
@@ -95,7 +112,14 @@ export async function allocate(
     return registry.allocations[workspaceName];
   }
 
-  const offset = nextAvailableOffset(registry);
+  let offset: number;
+  if (mode === "default") {
+    const holder = Object.values(registry.allocations).find((a) => a.offset === 0);
+    if (holder) throw new OffsetTakenError(holder);
+    offset = 0;
+  } else {
+    offset = nextAvailableOffset(registry);
+  }
 
   // Apply offset to default ports
   const ports: Record<string, number> = {};

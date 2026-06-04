@@ -35,19 +35,28 @@ if (!command || command === "--help" || command === "-h") {
   console.log(`wizrd-superset — Superset integration for wizrd repos
 
 Usage:
-  wizrd-superset <command>
+  wizrd-superset <command> [flags]
 
 Commands:
-  setup       Init submodules, copy env, allocate ports, install deps
-  sync        Reset all submodules to default branch + pull latest
-  run         Start dev servers + Docker with allocated ports
-  teardown    Kill processes, release ports, Docker down
-  ports       Show global port allocation table
-  init-repo   Scaffold .superset/ config in current repo
-  doctor      Validate config health
+  setup [--shift]   Init submodules, copy env from root, allocate ports, install deps
+  sync              Reset all submodules to default branch + pull latest
+  run               Start dev servers + Docker with allocated ports
+  teardown          Kill processes, release ports, Docker down
+  ports             Show global port allocation table
+  init-repo         Scaffold .superset/ config in current repo
+  doctor            Validate config health
+
+Flags:
+  --shift, --auto-offset
+      For 'setup': pick the next free port offset instead of insisting on +0.
+      Without this flag, setup uses canonical ports (offset +0) and errors if
+      another live workspace already holds them.
+      Equivalent to "autoShift": true in .superset/ports.json.
 
 Environment:
-  SUPERSET_ROOT_PATH       Path to main repo (set by Superset)
+  SUPERSET_ROOT_PATH       Path to main repo (set by Superset).
+                           When set and != cwd, .env* files are copied from
+                           root into the worktree on every 'setup'.
   SUPERSET_WORKSPACE_NAME  Workspace name (set by Superset)
   SUPERSET_WORKSPACE_PATH  Workspace directory (set by Superset)
 `);
