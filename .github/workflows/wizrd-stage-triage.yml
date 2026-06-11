@@ -1,0 +1,92 @@
+name: Wizrd Stage — Triage
+
+on:
+  workflow_call:
+    inputs:
+      issue_number:
+        description: 'Issue number passed via workflow_dispatch fallback.'
+        required: false
+        type: string
+        default: ''
+    secrets:
+      claude_token:
+        required: true
+
+jobs:
+  triage:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+      actions: write
+      id-token: write
+    concurrency:
+      group: wizrd-triage-${{ github.event.issue.number || inputs.issue_number }}
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 1
+
+      - name: Discover agent context
+        id: discover
+        shell: bash
+        run: |
+          set -euo pipefail
+          AGENT=""
+          for candidate in .claude/ci-agent-context.md .claude/agent-context.md CLAUDE.md; do
+            if [ -f "$candidate" ]; then
+              AGENT="$candidate"
+              break
+            fi
+          done
+          echo "agent=$AGENT" >> "$GITHUB_OUTPUT"
+
+      - name: Load agent instructions
+        if: steps.discover.outputs.agent != ''
+        shell: bash
+        run: |
+          {
+            echo 'INSTRUCTIONS<<AGENT_EOF'
+            cat "${{ steps.discover.outputs.agent }}"
+            echo 'AGENT_EOF'
+          } >> "$GITHUB_ENV"
+
+      - name: Run triage
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.claude_token }}
+          allowed_bots: 'github-actions'
+          additional_permissions: |
+            actions: read
+          claude_args: '--append-system-prompt "${{ env.INSTRUCTIONS }}" --allowedTools "Read,Glob,Grep,Bash"'
+          prompt: |
+            Stage: triage. Issue: ${{ github.event.issue.number || inputs.issue_number }}.
+
+            Read the issue title, body, and existing comments via:
+              gh issue view ${{ github.event.issue.number || inputs.issue_number }} --json title,body,comments
+
+            Post a single triage comment with:
+              (a) 1-2 sentence restatement of the problem,
+              (b) classification — severity (p0/p1/p2/p3) and scope (small/medium/large),
+              (c) whether the issue is ready to plan or blocked on missing information.
+
+            Do NOT write code. Do NOT open branches. Do NOT modify files.
+
+      - name: Transition on success
+        if: success()
+        uses: Digitaliko/wizrd-cli/.github/actions/wizrd-transition@v1
+        with:
+          issue_number: ${{ github.event.issue.number || inputs.issue_number }}
+          current_label: 'wizrd:triage'
+          next_label: 'wizrd:plan'
+          next_stage: 'plan'
+          mode: success-yolo
+
+      - name: Park on failure
+        if: failure()
+        uses: Digitaliko/wizrd-cli/.github/actions/wizrd-transition@v1
+        with:
+          issue_number: ${{ github.event.issue.number || inputs.issue_number }}
+          current_label: 'wizrd:triage'
+          mode: failure
