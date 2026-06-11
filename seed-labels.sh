@@ -51,4 +51,18 @@ case "$LEVEL" in
     ;;
 esac
 
+# Pipeline labels — agent-managed state machine, namespaced wizrd:*.
+# Always seeded at L1/L2. Harmless on repos that don't run the pipeline.
+# Skipped at L0 (L0 itself doesn't run code pipelines).
+if [[ "$LEVEL" == "L1" || "$LEVEL" == "L2" ]]; then
+  echo "Seeding pipeline labels on $REPO..."
+  upsert "wizrd:triage"             "0e8a16" "agent is triaging the issue"
+  upsert "wizrd:plan"               "0366d6" "agent is drafting a plan"
+  upsert "wizrd:implement"          "a2eeef" "agent is implementing"
+  upsert "wizrd:review"             "d4c5f9" "review-loop active"
+  upsert "wizrd:verify"             "fbca04" "verify stage running"
+  upsert "wizrd:awaiting-approval"  "fbca04" "human-approval gate — waiting on operator"
+  upsert "wizrd:needs-judgment"     "d93f0b" "agent failed — human required"
+fi
+
 echo "Done."
