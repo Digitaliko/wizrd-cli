@@ -71,6 +71,20 @@ if (firstArg && SUBCOMMANDS[firstArg]) {
 // ---- pipeline subcommand (inline, not delegated) ----
 if (firstArg === "pipeline") {
   const verb = args[1];
+  if (verb === "enable") {
+    const { runPipelineEnable } = await import("./commands/pipeline-enable.ts");
+    const force = args.includes("--force");
+    try {
+      await runPipelineEnable({
+        cwd: process.cwd(),
+        force,
+      });
+      process.exit(0);
+    } catch (err) {
+      console.error(`${BOLD}Error:${RESET} ${err instanceof Error ? err.message : String(err)}`);
+      process.exit(1);
+    }
+  }
   if (verb === "init") {
     const { runPipelineInit } = await import("./commands/pipeline-init.ts");
     const filterKind = (process.env.WIZRD_FILTER_KIND ?? "assignee") as
@@ -100,7 +114,8 @@ if (firstArg === "pipeline") {
   console.error(`${BOLD}Error:${RESET} unknown pipeline verb "${verb ?? ""}"`);
   console.error("");
   console.error("  Usage:");
-  console.error(`    ${BOLD}wizrd pipeline init${RESET} [--force]    Scaffold .github/workflows/wizrd-pipeline.yml`);
+  console.error(`    ${BOLD}wizrd pipeline enable${RESET} [--force]  One-command bootstrap (recommended)`);
+  console.error(`    ${BOLD}wizrd pipeline init${RESET}   [--force]  Low-level: just write the workflow file`);
   console.error("");
   console.error("  Env vars:");
   console.error(`    WIZRD_FILTER_KIND       assignee | label | none (default: assignee)`);
