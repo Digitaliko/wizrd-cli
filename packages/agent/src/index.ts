@@ -68,6 +68,48 @@ if (firstArg && SUBCOMMANDS[firstArg]) {
   process.exit(exitCode);
 }
 
+// ---- pipeline subcommand (inline, not delegated) ----
+if (firstArg === "pipeline") {
+  const verb = args[1];
+  if (verb === "init") {
+    const { runPipelineInit } = await import("./commands/pipeline-init.ts");
+    const filterKind = (process.env.WIZRD_FILTER_KIND ?? "assignee") as
+      | "assignee"
+      | "label"
+      | "none";
+    const filterValue = process.env.WIZRD_FILTER_VALUE ?? "";
+    const baseBranch = process.env.WIZRD_BASE_BRANCH ?? "main";
+    const docsRoot = process.env.WIZRD_DOCS_ROOT ?? "docs";
+    const force = args.includes("--force");
+    try {
+      const { path } = await runPipelineInit({
+        cwd: process.cwd(),
+        filterKind,
+        filterValue,
+        baseBranch,
+        docsRoot,
+        force,
+      });
+      console.log(`${GREEN}✓${RESET} Wrote ${path}`);
+      process.exit(0);
+    } catch (err) {
+      console.error(`${BOLD}Error:${RESET} ${err instanceof Error ? err.message : String(err)}`);
+      process.exit(1);
+    }
+  }
+  console.error(`${BOLD}Error:${RESET} unknown pipeline verb "${verb ?? ""}"`);
+  console.error("");
+  console.error("  Usage:");
+  console.error(`    ${BOLD}wizrd pipeline init${RESET} [--force]    Scaffold .github/workflows/wizrd-pipeline.yml`);
+  console.error("");
+  console.error("  Env vars:");
+  console.error(`    WIZRD_FILTER_KIND       assignee | label | none (default: assignee)`);
+  console.error(`    WIZRD_FILTER_VALUE      filter value (default: empty)`);
+  console.error(`    WIZRD_BASE_BRANCH       PR base branch (default: main)`);
+  console.error(`    WIZRD_DOCS_ROOT         docs root for gardening (default: docs)`);
+  process.exit(1);
+}
+
 // ---- Agent mode: spawn claude with wizrd OS ----
 
 // Parse agent-specific flags
