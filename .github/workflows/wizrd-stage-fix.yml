@@ -1,0 +1,82 @@
+name: Wizrd Stage — Fix (review-loop companion)
+
+# Dispatched only from wizrd-stage-review.yml. Never triggered directly.
+
+on:
+  workflow_call:
+    inputs:
+      issue_number:
+        required: true
+        type: string
+      pipeline_workflow:
+        required: false
+        type: string
+        default: 'wizrd-pipeline.yml'
+    secrets:
+      claude_token:
+        required: true
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+      actions: write
+      id-token: write
+    concurrency:
+      group: wizrd-fix-${{ inputs.issue_number }}
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          ref: refs/pull/${{ inputs.issue_number }}/head
+
+      - name: Run fixer
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.claude_token }}
+          allowed_bots: 'github-actions'
+          additional_permissions: |
+            actions: read
+          claude_args: '--allowedTools "Read,Glob,Grep,Bash,Edit,Write"'
+          prompt: |
+            Stage: review (fix pass). PR: ${{ inputs.issue_number }}.
+
+            The most recent PR review requested changes. Read the review body
+            and any line-level comments, then address each item: edit the
+            code on the PR branch, commit with a clear message, push.
+
+            Do NOT open a new PR. Do NOT resolve review threads.
+            Keep scope tight: only fix what the review asked for.
+
+      - name: Dispatch review on success
+        if: success()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NUM: ${{ inputs.issue_number }}
+          PWF: ${{ inputs.pipeline_workflow }}
+          REPO: ${{ github.repository }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh workflow run "$PWF" --repo "$REPO" --field stage="review" --field issue_number="$NUM"
+
+      - name: Park on failure
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NUM: ${{ inputs.issue_number }}
+          REPO: ${{ github.repository }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          iter=$(gh api "repos/$REPO/issues/$NUM/labels" --jq '.[].name' | \
+                 grep -oE '^wizrd:review-iter-[0-9]+$' | head -n1 || echo "")
+          if [ -n "$iter" ]; then
+            gh api -X DELETE "repos/$REPO/issues/$NUM/labels/$iter" 2>/dev/null || true
+          fi
+          gh api -X DELETE "repos/$REPO/issues/$NUM/labels/wizrd:review" 2>/dev/null || true
+          gh api -X POST "repos/$REPO/issues/$NUM/labels" -f "labels[]=wizrd:needs-judgment"
