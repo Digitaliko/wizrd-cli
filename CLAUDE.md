@@ -33,6 +33,8 @@ Spawns `claude` CLI with the wizrd OS system prompt injected via `--append-syste
 - `wizrd --dry-run` — Show assembled command without executing
 - `wizrd --verbose` — Show context before launching
 - `wizrd --model <model>` — Override model
+- `wizrd pipeline enable` — One-command bootstrap: detect repo, seed labels, set OAuth secret, generate `.github/workflows/wizrd-pipeline.yml`, branch + commit + push + PR. Refuses on L0. Env overrides: `WIZRD_FILTER_KIND` / `WIZRD_FILTER_VALUE` / `WIZRD_BASE_BRANCH` / `WIZRD_DOCS_ROOT`. Pass `--force` to overwrite an existing pipeline file.
+- `wizrd pipeline init` — Low-level: just write the per-repo workflow file from the template. Same env vars. Skips secret + label-seed + PR steps. Useful for tests and re-rendering.
 
 ### `packages/cmd/` — wizrd cmd (fast commands)
 
@@ -87,3 +89,14 @@ bun run packages/cmd/src/index.ts whoami      # test cmd
 - **Templates, not hardcoded prompts** — system prompt assembled from .md files, easy to edit
 - **Shared lib** — `@wizrd-cli/shared` prevents duplication across packages
 - **Level detection is the key** — everything (agent, cmd, config, superset) reads `## Wizrd Level` from CLAUDE.md
+
+## Pipeline composites (delivery harness)
+
+The `.github/workflows/wizrd-stage-*.yml` + `.github/workflows/wizrd-tagger.yml` + `.github/actions/wizrd-transition/` composites are the **delivery pipeline** — a label-driven cascade (triage → plan → implement → review-loop → verify → doc-gardening) consumed by `@v1` from every Digitaliko repo that opts in.
+
+- **Public-API contract:** `.github/STABILITY.md` spells out additive vs. breaking changes. Inputs, secret names, label namespace are all contract.
+- **Bootstrap:** operators run `wizrd pipeline enable` in their repo; the composites do the rest.
+- **Bump rhythm:** additive changes — merge to main, then `git tag -fa v1 && git push --force-with-lease origin v1`.
+- **Deprecation:** `wizrd-agent.yml` and `wizrd-review.yml` are superseded by the cascade and will be removed once all repos migrate.
+
+See `.github/STABILITY.md` for the contract.
