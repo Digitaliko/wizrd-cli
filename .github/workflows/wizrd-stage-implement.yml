@@ -1,0 +1,146 @@
+name: Wizrd Stage — Implement
+
+on:
+  workflow_call:
+    inputs:
+      issue_number:
+        required: false
+        type: string
+        default: ''
+      base_branch:
+        required: false
+        type: string
+        default: 'main'
+      pipeline_workflow:
+        description: 'Per-repo pipeline entry workflow basename.'
+        required: false
+        type: string
+        default: 'wizrd-pipeline.yml'
+    secrets:
+      claude_token:
+        required: true
+
+jobs:
+  implement:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+      actions: write
+      id-token: write
+    concurrency:
+      group: wizrd-implement-${{ github.event.issue.number || inputs.issue_number }}
+      cancel-in-progress: false
+    outputs:
+      pr_number: ${{ steps.detect.outputs.pr_number }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Discover agent context
+        id: discover
+        shell: bash
+        run: |
+          set -euo pipefail
+          AGENT=""
+          for candidate in .claude/ci-agent-context.md .claude/agent-context.md CLAUDE.md; do
+            if [ -f "$candidate" ]; then
+              AGENT="$candidate"
+              break
+            fi
+          done
+          echo "agent=$AGENT" >> "$GITHUB_OUTPUT"
+
+      - name: Load agent instructions
+        if: steps.discover.outputs.agent != ''
+        shell: bash
+        run: |
+          {
+            echo 'INSTRUCTIONS<<AGENT_EOF'
+            cat "${{ steps.discover.outputs.agent }}"
+            echo 'AGENT_EOF'
+          } >> "$GITHUB_ENV"
+
+      - name: Run implementer
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.claude_token }}
+          base_branch: ${{ inputs.base_branch }}
+          branch_prefix: 'issue/'
+          branch_name_template: 'issue/${{ github.event.issue.number || inputs.issue_number }}-{{description}}'
+          allowed_bots: 'github-actions'
+          additional_permissions: |
+            actions: read
+          claude_args: '--append-system-prompt "${{ env.INSTRUCTIONS }}" --allowedTools "Read,Glob,Grep,Bash,Edit,Write"'
+          prompt: |
+            Stage: implement. Issue: ${{ github.event.issue.number || inputs.issue_number }}.
+
+            Read the most recent plan comment posted by the agent on this issue.
+            Implement it: branch issue/<number>-<short-slug>, make code changes,
+            commit with a clear message, open a DRAFT PR including
+            "closes #${{ github.event.issue.number || inputs.issue_number }}"
+            in the description.
+
+            Follow conventions in CLAUDE.md / REVIEW_RULES.md / CODE_REVIEW.md
+            if present. Run lint + typecheck + tests before pushing if available.
+
+            Do NOT merge. Do NOT mark the PR ready-for-review.
+
+      - name: Detect opened PR
+        id: detect
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NUM: ${{ github.event.issue.number || inputs.issue_number }}
+          REPO: ${{ github.repository }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Find the PR that closes this issue via timeline cross-references.
+          pr=$(gh issue view "$NUM" \
+            --repo "$REPO" \
+            --json timelineItems \
+            --jq '[.timelineItems[] | select(.__typename == "CrossReferencedEvent") | .source.number] | last // empty' 2>/dev/null || true)
+          if [ -z "$pr" ]; then
+            # Fallback: search open PRs for "closes #NUM" in body
+            pr=$(gh pr list --repo "$REPO" --state open --json number,body \
+              --jq "[.[] | select(.body | test(\"closes #$NUM\"; \"i\"))] | .[0].number // empty")
+          fi
+          if [ -z "$pr" ]; then
+            echo "pr_number=" >> "$GITHUB_OUTPUT"
+            echo "No PR detected — implement may have failed silently." >&2
+            exit 1
+          fi
+          echo "pr_number=$pr" >> "$GITHUB_OUTPUT"
+
+      - name: Park issue, hand off to PR
+        if: success() && steps.detect.outputs.pr_number != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NUM: ${{ github.event.issue.number || inputs.issue_number }}
+          PR: ${{ steps.detect.outputs.pr_number }}
+          PWF: ${{ inputs.pipeline_workflow }}
+          REPO: ${{ github.repository }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Remove implement label from the issue.
+          gh api -X DELETE "repos/$REPO/issues/$NUM/labels/wizrd:implement" 2>/dev/null || true
+          # Add the review label to the PR (not the issue).
+          gh api -X POST "repos/$REPO/issues/$PR/labels" -f "labels[]=wizrd:review"
+          # Dispatch the review stage against the PR number through the per-repo
+          # pipeline entry workflow. Label-add via GITHUB_TOKEN does NOT fire
+          # labeled events, so the dispatch is mandatory.
+          gh workflow run "$PWF" \
+            --repo "$REPO" \
+            --field stage="review" \
+            --field issue_number="$PR"
+
+      - name: Park on failure
+        if: failure()
+        uses: Digitaliko/wizrd-cli/.github/actions/wizrd-transition@v1
+        with:
+          issue_number: ${{ github.event.issue.number || inputs.issue_number }}
+          current_label: 'wizrd:implement'
+          mode: failure

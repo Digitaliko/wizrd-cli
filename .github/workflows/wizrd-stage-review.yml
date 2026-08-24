@@ -1,0 +1,114 @@
+name: Wizrd Stage — Review (loop entry)
+
+on:
+  workflow_call:
+    inputs:
+      issue_number:
+        description: 'PR number (review stage always runs on a PR).'
+        required: false
+        type: string
+        default: ''
+      max_iterations:
+        required: false
+        type: string
+        default: '3'
+      pipeline_workflow:
+        required: false
+        type: string
+        default: 'wizrd-pipeline.yml'
+    secrets:
+      claude_token:
+        required: true
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
+      actions: write
+      id-token: write
+    concurrency:
+      group: wizrd-review-${{ github.event.pull_request.number || inputs.issue_number }}
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Run reviewer (via official /code-review plugin)
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.claude_token }}
+          plugin_marketplaces: 'https://github.com/anthropics/claude-code.git'
+          plugins: 'code-review@claude-code-plugins'
+          allowed_bots: 'github-actions'
+          additional_permissions: |
+            actions: read
+          prompt: |
+            /code-review:code-review --comment ${{ github.repository }}/pull/${{ github.event.pull_request.number || inputs.issue_number }}
+
+            Before reviewing, read these if present (first wins):
+              REVIEW_RULES.md → CODE_REVIEW.md → CLAUDE.md → .claude/ci-agent-context.md
+
+            Post ONE PR review with explicit verdict (approve / request changes / comment).
+            Do NOT merge. Do NOT push commits. The fix companion will push if changes are requested.
+
+            Use this output format:
+              ### 🔴 BLOCKING (must fix before merge)
+              ### 🟡 REQUIRED (should fix before merge)
+              ### 🟢 ADVISORY (skip section if none)
+              ### ✅ What's Good
+
+            Cite `file:line` for every code finding.
+
+      - name: Loop control
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NUM: ${{ github.event.pull_request.number || inputs.issue_number }}
+          MAX: ${{ inputs.max_iterations }}
+          PWF: ${{ inputs.pipeline_workflow }}
+          REPO: ${{ github.repository }}
+          REVIEWER_STATUS: ${{ job.status }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          # Read iteration counter from PR labels; default 1.
+          labels=$(gh api "repos/$REPO/issues/$NUM/labels" --jq '.[].name')
+          iter=$(printf '%s\n' "$labels" | grep -oE '^wizrd:review-iter-[0-9]+$' | head -n1 | grep -oE '[0-9]+$' || echo "")
+          if [ -z "$iter" ]; then iter=1; fi
+
+          if [ "$REVIEWER_STATUS" != "success" ]; then
+            gh api -X DELETE "repos/$REPO/issues/$NUM/labels/wizrd:review-iter-$iter" 2>/dev/null || true
+            gh api -X DELETE "repos/$REPO/issues/$NUM/labels/wizrd:review" 2>/dev/null || true
+            gh api -X POST "repos/$REPO/issues/$NUM/labels" -f "labels[]=wizrd:needs-judgment"
+            exit 0
+          fi
+
+          # Latest PR review verdict
+          state=$(gh api "repos/$REPO/pulls/$NUM/reviews" --jq '.[].state' | tail -n1 || echo "")
+
+          if [ "$state" = "CHANGES_REQUESTED" ] && [ "$iter" -lt "$MAX" ]; then
+            gh api -X DELETE "repos/$REPO/issues/$NUM/labels/wizrd:review-iter-$iter" 2>/dev/null || true
+            next=$((iter + 1))
+            gh api -X POST "repos/$REPO/issues/$NUM/labels" -f "labels[]=wizrd:review-iter-$next"
+            gh workflow run "$PWF" --repo "$REPO" --field stage="fix" --field issue_number="$NUM"
+            exit 0
+          fi
+
+          if [ "$state" = "CHANGES_REQUESTED" ]; then
+            # Budget exhausted
+            gh api -X DELETE "repos/$REPO/issues/$NUM/labels/wizrd:review-iter-$iter" 2>/dev/null || true
+            gh api -X DELETE "repos/$REPO/issues/$NUM/labels/wizrd:review" 2>/dev/null || true
+            gh api -X POST "repos/$REPO/issues/$NUM/labels" -f "labels[]=wizrd:needs-judgment"
+            exit 0
+          fi
+
+          # Approved / commented / dismissed / empty — exit loop, hand off to verify.
+          gh api -X DELETE "repos/$REPO/issues/$NUM/labels/wizrd:review-iter-$iter" 2>/dev/null || true
+          gh api -X DELETE "repos/$REPO/issues/$NUM/labels/wizrd:review" 2>/dev/null || true
+          gh api -X POST "repos/$REPO/issues/$NUM/labels" -f "labels[]=wizrd:verify"
+          gh workflow run "$PWF" --repo "$REPO" --field stage="verify" --field issue_number="$NUM" || true

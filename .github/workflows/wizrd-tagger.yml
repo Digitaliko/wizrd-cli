@@ -1,0 +1,112 @@
+name: Wizrd Tagger
+# Deterministic — no LLM. Auto-applies the first-stage label to new issues
+# that match the configured filter, then dispatches the first stage's
+# workflow. Required because GitHub suppresses `labeled` events for
+# labels added via GITHUB_TOKEN (infinite-loop guard).
+
+on:
+  workflow_call:
+    inputs:
+      first_stage_label:
+        description: 'Label to apply when an issue matches (e.g. wizrd:triage).'
+        required: true
+        type: string
+      first_stage_workflow:
+        description: 'Basename of the first stage workflow to dispatch (e.g. wizrd-triage.yml).'
+        required: true
+        type: string
+      filter_kind:
+        description: 'How to filter incoming issues: assignee | label | none'
+        required: true
+        type: string
+      filter_value:
+        description: 'Value for filter_kind (login for assignee, label name for label, empty for none).'
+        required: false
+        type: string
+        default: ''
+
+jobs:
+  tag-new-issue:
+    if: ${{ !github.event.issue.pull_request }}
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+      actions: write
+      contents: read
+    steps:
+      - name: Skip if issue already in pipeline
+        id: gate
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          labels=$(gh issue view "${{ github.event.issue.number }}" \
+            --repo "${{ github.repository }}" \
+            --json labels --jq '.labels[].name')
+          if printf '%s\n' "$labels" | grep -qE '^wizrd:'; then
+            echo "already=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "already=false" >> "$GITHUB_OUTPUT"
+
+      - name: Apply filter
+        if: steps.gate.outputs.already == 'false'
+        id: filter
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          KIND='${{ inputs.filter_kind }}'
+          VALUE='${{ inputs.filter_value }}'
+          case "$KIND" in
+            none)
+              echo "matches=true" >> "$GITHUB_OUTPUT"
+              ;;
+            label)
+              labels=$(gh issue view "${{ github.event.issue.number }}" \
+                --repo "${{ github.repository }}" \
+                --json labels --jq '.labels[].name')
+              if printf '%s\n' "$labels" | grep -qx "$VALUE"; then
+                echo "matches=true" >> "$GITHUB_OUTPUT"
+              else
+                echo "matches=false" >> "$GITHUB_OUTPUT"
+              fi
+              ;;
+            assignee)
+              assignees=$(gh issue view "${{ github.event.issue.number }}" \
+                --repo "${{ github.repository }}" \
+                --json assignees --jq '.assignees[].login')
+              if printf '%s\n' "$assignees" | grep -qx "$VALUE"; then
+                echo "matches=true" >> "$GITHUB_OUTPUT"
+              else
+                echo "matches=false" >> "$GITHUB_OUTPUT"
+              fi
+              ;;
+            *)
+              echo "Unknown filter_kind: $KIND" >&2
+              exit 1
+              ;;
+          esac
+
+      - name: Apply first-stage label
+        if: steps.filter.outputs.matches == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          gh issue edit "${{ github.event.issue.number }}" \
+            --repo "${{ github.repository }}" \
+            --add-label "${{ inputs.first_stage_label }}"
+
+      - name: Dispatch first stage
+        if: steps.filter.outputs.matches == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          # Label-add via GITHUB_TOKEN does not fire `issues.labeled` —
+          # dispatch the first stage explicitly with the issue number.
+          gh workflow run "${{ inputs.first_stage_workflow }}" \
+            --repo "${{ github.repository }}" \
+            --ref "${{ github.event.repository.default_branch }}" \
+            --field issue_number="${{ github.event.issue.number }}"

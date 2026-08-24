@@ -1,0 +1,91 @@
+name: 'Wizrd Stage Transition'
+description: 'Removes the current stage label and applies the next label (yolo) or awaiting-approval (human-approval) or needs-judgment (failure). Optionally dispatches the next workflow.'
+
+inputs:
+  issue_number:
+    description: 'Issue or PR number to transition.'
+    required: true
+  current_label:
+    description: 'Label to remove (e.g. wizrd:triage).'
+    required: true
+  next_label:
+    description: 'Label to add on success-yolo. Empty for terminal stages.'
+    required: false
+    default: ''
+  next_stage:
+    description: 'Semantic stage name to dispatch (e.g. plan, implement). Empty = no dispatch.'
+    required: false
+    default: ''
+  pipeline_workflow:
+    description: 'Basename of the per-repo pipeline entry workflow (default wizrd-pipeline.yml).'
+    required: false
+    default: 'wizrd-pipeline.yml'
+  mode:
+    description: 'success-yolo | success-human-approval | success-terminal | failure'
+    required: true
+  awaiting_label:
+    description: 'Label to apply on human-approval success. Default wizrd:awaiting-approval.'
+    required: false
+    default: 'wizrd:awaiting-approval'
+  needs_judgment_label:
+    description: 'Label to apply on failure. Default wizrd:needs-judgment.'
+    required: false
+    default: 'wizrd:needs-judgment'
+
+runs:
+  using: composite
+  steps:
+    - name: Transition labels
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+        NUM: ${{ inputs.issue_number }}
+        CUR: ${{ inputs.current_label }}
+        NXT: ${{ inputs.next_label }}
+        AWL: ${{ inputs.awaiting_label }}
+        NEJ: ${{ inputs.needs_judgment_label }}
+        MODE: ${{ inputs.mode }}
+        REPO: ${{ github.repository }}
+      run: |
+        set -euo pipefail
+        # Always try to remove the current label. Tolerate already-gone.
+        gh api -X DELETE "repos/$REPO/issues/$NUM/labels/$CUR" 2>/dev/null || true
+
+        case "$MODE" in
+          success-yolo)
+            if [ -n "$NXT" ]; then
+              gh api -X POST "repos/$REPO/issues/$NUM/labels" -f "labels[]=$NXT"
+            fi
+            ;;
+          success-human-approval)
+            gh api -X POST "repos/$REPO/issues/$NUM/labels" -f "labels[]=$AWL"
+            ;;
+          success-terminal)
+            : # nothing to add
+            ;;
+          failure)
+            gh api -X POST "repos/$REPO/issues/$NUM/labels" -f "labels[]=$NEJ"
+            ;;
+          *)
+            echo "Unknown mode: $MODE" >&2
+            exit 1
+            ;;
+        esac
+
+    - name: Dispatch next workflow
+      if: inputs.mode == 'success-yolo' && inputs.next_stage != ''
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+        NUM: ${{ inputs.issue_number }}
+        STAGE: ${{ inputs.next_stage }}
+        PWF: ${{ inputs.pipeline_workflow }}
+        REPO: ${{ github.repository }}
+      run: |
+        set -euo pipefail
+        # Required: label-add via GITHUB_TOKEN does NOT fire labeled events.
+        # Route via the per-repo pipeline workflow with the stage input.
+        gh workflow run "$PWF" \
+          --repo "$REPO" \
+          --field stage="$STAGE" \
+          --field issue_number="$NUM"

@@ -1,0 +1,126 @@
+name: Wizrd Stage — Doc Gardening (post-merge)
+
+# Terminal stage: runs on every merged PR. No label cascade, no chaining.
+# Self-loop guard: skips if the merged PR's head branch starts with
+# docs/post-merge-, otherwise doc-gardening would trigger itself forever.
+
+on:
+  workflow_call:
+    inputs:
+      pr_number:
+        description: 'PR number of the just-merged PR.'
+        required: true
+        type: string
+      docs_root:
+        description: 'Root path the agent may edit (default: docs). For L1 wizrds, override to clients/<x>/knowledge-base.'
+        required: false
+        type: string
+        default: 'docs'
+    secrets:
+      claude_token:
+        required: true
+
+jobs:
+  doc-gardening:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+      actions: read
+      id-token: write
+    concurrency:
+      group: wizrd-doc-gardening-${{ inputs.pr_number }}
+      cancel-in-progress: false
+    steps:
+      - name: Self-loop guard
+        id: guard
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ inputs.pr_number }}
+          REPO: ${{ github.repository }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          head=$(gh pr view "$PR" --repo "$REPO" --json headRefName --jq .headRefName)
+          if printf '%s' "$head" | grep -qE '^docs/post-merge-'; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "Skipping — merged PR is itself a doc-gardening PR ($head)."
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/checkout@v5
+        if: steps.guard.outputs.skip == 'false'
+        with:
+          fetch-depth: 0
+
+      - name: Run doc-gardener
+        if: steps.guard.outputs.skip == 'false'
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.claude_token }}
+          base_branch: ${{ github.event.repository.default_branch }}
+          branch_prefix: 'docs/post-merge-'
+          branch_name_template: 'docs/post-merge-${{ inputs.pr_number }}'
+          allowed_bots: 'github-actions'
+          additional_permissions: |
+            actions: read
+          claude_args: '--allowedTools "Read,Glob,Grep,Bash,Edit,Write"'
+          prompt: |
+            Stage: doc-gardening (post-merge). PR: ${{ inputs.pr_number }}.
+
+            A pull request just merged. Your job: keep `${{ inputs.docs_root }}/`
+            aligned with the codebase. This is a TERMINAL stage — do NOT
+            transition labels, do NOT dispatch other workflows, do NOT modify
+            the merged PR's content.
+
+            1. Read the merged PR's metadata + diff:
+                 gh pr view ${{ inputs.pr_number }} --json mergeCommit,baseRefName,headRefName,title,body
+                 gh pr diff ${{ inputs.pr_number }}
+
+            2. Classify the change as SIGNIFICANT or TRIVIAL.
+
+               SIGNIFICANT examples:
+                 - new public API / module / CLI flag / env var
+                 - behavior change visible to users or integrators
+                 - breaking change or new dependency surface
+                 - architecture shift
+                 - new convention worth documenting
+
+               TRIVIAL examples:
+                 - typo / formatting / comment-only
+                 - internal refactor with no public-surface change
+                 - test-only change
+                 - dependency bump with no API impact
+
+            3. If TRIVIAL: post a single comment on the merged PR:
+                 "doc-gardening skipped — change is internal/trivial."
+               then exit. No branch, no PR.
+
+            4. If SIGNIFICANT:
+                 - Read `${{ inputs.docs_root }}/` to learn the doc structure.
+                 - If `${{ inputs.docs_root }}/` does not exist and the change
+                   warrants it, bootstrap with a README indexing per-module pages.
+                 - For monorepos, prefer `${{ inputs.docs_root }}/<module>/<topic>.md`
+                   over giant catch-all files. Cross-link liberally.
+                 - Create branch `docs/post-merge-${{ inputs.pr_number }}` off
+                   the default branch. Edit ONLY files under `${{ inputs.docs_root }}/`.
+                 - Commit, push, open a NEW draft PR titled
+                   "docs: update for #${{ inputs.pr_number }}" describing what was
+                   added/changed and which merged PR drove it.
+
+            Do NOT touch code outside `${{ inputs.docs_root }}/`. Do NOT reopen
+            or modify the merged PR beyond the optional skip-comment in step 3.
+
+      - name: Comment on merged PR on failure
+        if: failure() && steps.guard.outputs.skip == 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ inputs.pr_number }}
+          REPO: ${{ github.repository }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh pr comment "$PR" --repo "$REPO" --body \
+            "doc-gardening failed — see workflow run \`${{ github.run_id }}\`. No \`wizrd:needs-judgment\` label applied (post-merge stage has no cascade)."

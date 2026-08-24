@@ -1,0 +1,112 @@
+name: Wizrd Stage — Plan
+
+on:
+  workflow_call:
+    inputs:
+      issue_number:
+        required: false
+        type: string
+        default: ''
+      mode:
+        description: 'yolo | human-approval (default: human-approval).'
+        required: false
+        type: string
+        default: 'human-approval'
+    secrets:
+      claude_token:
+        required: true
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+      actions: write
+      id-token: write
+    concurrency:
+      group: wizrd-plan-${{ github.event.issue.number || inputs.issue_number }}
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 1
+
+      - name: Discover agent context
+        id: discover
+        shell: bash
+        run: |
+          set -euo pipefail
+          AGENT=""
+          for candidate in .claude/ci-agent-context.md .claude/agent-context.md CLAUDE.md; do
+            if [ -f "$candidate" ]; then
+              AGENT="$candidate"
+              break
+            fi
+          done
+          echo "agent=$AGENT" >> "$GITHUB_OUTPUT"
+
+      - name: Load agent instructions
+        if: steps.discover.outputs.agent != ''
+        shell: bash
+        run: |
+          {
+            echo 'INSTRUCTIONS<<AGENT_EOF'
+            cat "${{ steps.discover.outputs.agent }}"
+            echo 'AGENT_EOF'
+          } >> "$GITHUB_ENV"
+
+      - name: Run plan
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.claude_token }}
+          allowed_bots: 'github-actions'
+          additional_permissions: |
+            actions: read
+          claude_args: '--append-system-prompt "${{ env.INSTRUCTIONS }}" --allowedTools "Read,Glob,Grep,Bash"'
+          prompt: |
+            Stage: plan. Issue: ${{ github.event.issue.number || inputs.issue_number }}.
+
+            Before planning, skim /docs/ and CLAUDE.md for conventions, package layout,
+            and any subsystem docs that touch the affected area. Cross-reference what
+            you find so the implementer reuses existing patterns.
+
+            Produce an implementation plan for this issue as a SINGLE issue comment
+            with these sections:
+
+              Summary — 2-3 sentences describing the change.
+              Files to change — bullet list of paths with rough line counts.
+              Approach — short numbered steps.
+              Risks — anything that could break or surprise a reviewer.
+              Test plan — how correctness will be verified.
+              Docs — cite any /docs or CLAUDE.md pages relevant.
+
+            Post via `gh issue comment ${{ github.event.issue.number || inputs.issue_number }} --body-file <plan.md>`.
+
+            Do NOT write code. Do NOT open branches. Do NOT modify files.
+
+      - name: Transition on success (yolo)
+        if: success() && inputs.mode == 'yolo'
+        uses: Digitaliko/wizrd-cli/.github/actions/wizrd-transition@v1
+        with:
+          issue_number: ${{ github.event.issue.number || inputs.issue_number }}
+          current_label: 'wizrd:plan'
+          next_label: 'wizrd:implement'
+          next_stage: 'implement'
+          mode: success-yolo
+
+      - name: Transition on success (human-approval)
+        if: success() && inputs.mode == 'human-approval'
+        uses: Digitaliko/wizrd-cli/.github/actions/wizrd-transition@v1
+        with:
+          issue_number: ${{ github.event.issue.number || inputs.issue_number }}
+          current_label: 'wizrd:plan'
+          mode: success-human-approval
+
+      - name: Park on failure
+        if: failure()
+        uses: Digitaliko/wizrd-cli/.github/actions/wizrd-transition@v1
+        with:
+          issue_number: ${{ github.event.issue.number || inputs.issue_number }}
+          current_label: 'wizrd:plan'
+          mode: failure
