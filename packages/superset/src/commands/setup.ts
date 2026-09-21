@@ -33,8 +33,8 @@ export async function setup(): Promise<void> {
   console.log(`  Workspace: ${workspaceName}`);
   console.log("");
 
-  // 1. Init submodules (L0 and L1)
-  if (hasSubmodules(dir) && (info.level === "L0" || info.level === "L1")) {
+  // 1. Init submodules (any level — a worktree never has them checked out)
+  if (hasSubmodules(dir)) {
     console.log("Initializing submodules...");
     const results = await initSubmodules(dir);
     const failed = results.filter((r) => r.status === "failed");
@@ -60,16 +60,16 @@ export async function setup(): Promise<void> {
   const mode: AllocateMode = shiftFlag || portsConfig.autoShift ? "shift" : "default";
 
   let allocation;
+  let shifted = mode === "shift";
   try {
     allocation = await allocate(workspaceName, dir, projectName, defaultPorts, mode);
   } catch (e) {
-    if (e instanceof OffsetTakenError) {
-      console.error(`\n${e.message}\n`);
-      process.exit(1);
-    }
-    throw e;
+    if (!(e instanceof OffsetTakenError)) throw e;
+    console.log(`Offset +0 held by '${e.takenBy.workspace}' (${e.takenBy.workspacePath}) — shifting.`);
+    allocation = await allocate(workspaceName, dir, projectName, defaultPorts, "shift");
+    shifted = true;
   }
-  console.log(`Port allocation: offset +${allocation.offset}${mode === "shift" ? " (shifted)" : ""}`);
+  console.log(`Port allocation: offset +${allocation.offset}${shifted ? " (shifted)" : ""}`);
   for (const [name, port] of Object.entries(allocation.ports)) {
     console.log(`  ${name}: ${port}`);
   }
